@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        :root {
+            --bg-color: #f0f2f5;
+            --card-bg: #ffffff;
+            --primary: #2563eb;
+            --text-main: #1e293b;
+            --accent: #10b981;
+        }
+
+        body {
+            background-color: #d1d5db;
+            font-family: 'PingFang SC', 'Helvetica Neue', Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        
+        /* 模拟 800x480 触摸屏 */
+        .lv-screen {
+            width: 800px;
+            height: 480px;
+            background-color: var(--bg-color);
+            border-radius: 20px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.2);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 顶部导航栏 (lv_obj_t with shadow) */
+        .lv-header {
+            background: var(--card-bg);
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            z-index: 10;
+        }
+
+        .lv-header h2 {
+            margin: 0;
+            font-size: 20px;
+            color: var(--primary);
+            letter-spacing: 1px;
+        }
+
+        .status-badge {
+            background: #ecfdf5;
+            color: var(--accent);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            border: 1px solid var(--accent);
+        }
+
+        /* 网格布局 (lv_layout_flex) */
+        .lv-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 25px;
+            padding: 30px;
+            flex-grow: 1;
+        }
+
+        /* 卡片按钮 (lv_card 样式) */
+        .lv-card {
+            background: var(--card-bg);
+            border-radius: 16px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            border: 1px solid #e2e8f0;
+            position: relative;
+        }
+
+        .lv-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(37, 99, 235, 0.1);
+            border-color: var(--primary);
+        }
+
+        .lv-card:active {
+            transform: scale(0.95);
+            background: #f8fafc;
+        }
+
+        /* 图标装饰 */
+        .icon-box {
+            width: 60px;
+            height: 60px;
+            background: #eff6ff;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 15px;
+            font-size: 28px;
+        }
+
+        .lv-card-label {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
+        .lv-card-desc {
+            font-size: 11px;
+            color: #94a3b8;
+            margin-top: 5px;
+        }
+
+        .lv-footer {
+            padding: 10px 30px;
+            background: #f8fafc;
+            border-top: 1px solid #e2e8f0;
+            font-size: 12px;
+            color: #64748b;
+            display: flex;
+            justify-content: space-between;
+        }
+    </style>
+</head>
+<body>
+
+<div class="lv-screen">
+    <header class="lv-header">
+        <h2>WindPower DC-System Monitor</h2>
+        <div class="status-badge">● 边缘节点正常</div>
+    </header>
+
+    <div class="lv-grid">
+        <div class="lv-card" onclick="alert('加载中...')">
+            <div class="icon-box">⚡</div>
+            <span class="lv-card-label">交流窜入</span>
+            <span class="lv-card-desc">AC Ingress Simulation</span>
+        </div>
+        <div class="lv-card" onclick="alert('加载中...')">
+            <div class="icon-box">🌍</div>
+            <span class="lv-card-label">母线接地</span>
+            <span class="lv-card-desc">Ground Fault Logic</span>
+        </div>
+        <div class="lv-card" onclick="alert('加载中...')">
+            <div class="icon-box">📉</div>
+            <span class="lv-card-label">绝缘劣化</span>
+            <span class="lv-card-desc">Insulation Aging</span>
+        </div>
+        <div class="lv-card" onclick="alert('加载中...')">
+            <div class="icon-box">🔋</div>
+            <span class="lv-card-label">电容老化</span>
+            <span class="lv-card-desc">Capacitor Health</span>
+        </div>
+        <div class="lv-card" onclick="alert('加载中...')">
+            <div class="icon-box">📊</div>
+            <span class="lv-card-label">PWM异常</span>
+            <span class="lv-card-desc">Harmonic Distortion</span>
+        </div>
+        <div class="lv-card" onclick="alert('加载中...')">
+            <div class="icon-box">⚙️</div>
+            <span class="lv-card-label">IGBT故障</span>
+            <span class="lv-card-desc">Switching Loss</span>
+        </div>
+    </div>
+
+    <footer class="lv-footer">
+        <span>项目单位：风电场直流系统研发组</span>
+        <span>2026-02-05 07:43</span>
+    </footer>
+</div>
+
+</body>
+</html>
