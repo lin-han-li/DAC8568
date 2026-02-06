@@ -58,11 +58,20 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-/* USART2 引脚（原 ESP8266 串口，保留供它用） */
-#define USART2_RX_Pin GPIO_PIN_5
-#define USART2_RX_GPIO_Port GPIOD
-#define USART2_TX_Pin GPIO_PIN_6
-#define USART2_TX_GPIO_Port GPIOD
+#define ESP8266_RX_Pin GPIO_PIN_5
+#define ESP8266_RX_GPIO_Port GPIOD
+#define ESP8266_TX_Pin GPIO_PIN_6
+#define ESP8266_TX_GPIO_Port GPIOD
+#define DAC8568_CLR_Pin GPIO_PIN_9
+#define DAC8568_CLR_GPIO_Port GPIOB
+#define DAC8568_LDAC_Pin GPIO_PIN_6
+#define DAC8568_LDAC_GPIO_Port GPIOA
+#define DAC8568_DIN_Pin GPIO_PIN_7
+#define DAC8568_DIN_GPIO_Port GPIOA
+#define DAC85_CLK_Pin GPIO_PIN_5
+#define DAC85_CLK_GPIO_Port GPIOA
+#define DAC8568_SYNC_Pin GPIO_PIN_4
+#define DAC8568_SYNC_GPIO_Port GPIOA
 
 /* USER CODE BEGIN Private defines */
 /* USER CODE END Private defines */
