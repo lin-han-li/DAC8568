@@ -22,7 +22,6 @@
 #include "dma.h"
 #include "dma2d.h"
 #include "fatfs.h"
-#include "ltdc.h"
 #include "mdma.h"
 #include "memorymap.h"
 #include "quadspi.h"
@@ -150,7 +149,6 @@ int main(void)
   MX_USART1_UART_Init();
   MX_FMC_Init();
   MX_DMA2D_Init();
-  MX_LTDC_Init();
   MX_TIM3_Init();
   MX_SDMMC1_SD_Init();
   MX_FATFS_Init();

@@ -62,6 +62,8 @@ void Error_Handler(void);
 #define ESP8266_RX_GPIO_Port GPIOD
 #define ESP8266_TX_Pin GPIO_PIN_6
 #define ESP8266_TX_GPIO_Port GPIOD
+#define DC_Pin GPIO_PIN_12
+#define DC_GPIO_Port GPIOG
 #define DAC8568_CLR_Pin GPIO_PIN_9
 #define DAC8568_CLR_GPIO_Port GPIOB
 #define DAC8568_LDAC_Pin GPIO_PIN_6
@@ -70,6 +72,8 @@ void Error_Handler(void);
 #define DAC8568_DIN_GPIO_Port GPIOA
 #define DAC85_CLK_Pin GPIO_PIN_5
 #define DAC85_CLK_GPIO_Port GPIOA
+#define BG_Pin GPIO_PIN_6
+#define BG_GPIO_Port GPIOH
 #define DAC8568_SYNC_Pin GPIO_PIN_4
 #define DAC8568_SYNC_GPIO_Port GPIOA
 
