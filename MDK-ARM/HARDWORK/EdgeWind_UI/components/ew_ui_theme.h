@@ -32,17 +32,17 @@ extern "C" {
  * Layout metrics
  * ========================= */
 
-#define EW_UI_HEADER_H          70
-#define EW_UI_FOOTER_H          48
+#define EW_UI_HEADER_H          44
+#define EW_UI_FOOTER_H          34
 
-#define EW_UI_BODY_PAD          24
-#define EW_UI_BODY_GAP          24
+#define EW_UI_BODY_PAD          8
+#define EW_UI_BODY_GAP          8
 
 /* Card */
-#define EW_UI_CARD_RADIUS       12
+#define EW_UI_CARD_RADIUS       8
 
 /* Pressed feedback (LVGL transform scale: 256 = 1.0) */
-#define EW_UI_PRESSED_SCALE     245 /* ~0.96 */
+#define EW_UI_PRESSED_SCALE     248 /* ~0.97 */
 
 /* Footer log */
 #define EW_UI_LOG_MAX_LEN       160
@@ -62,4 +62,3 @@ static inline int32_t ew_ui_theme_screen_h(void)
 #endif
 
 #endif /* EW_UI_THEME_H */
-

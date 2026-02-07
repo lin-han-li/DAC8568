@@ -22,6 +22,7 @@ extern "C" {
 #else
 #include "lvgl/lvgl.h"
 #endif
+#include <stdint.h>
 
 /*********************
  * DEFINES
@@ -42,6 +43,9 @@ void disp_enable_update(void);
 
 /* Disable updating the screen (the flushing process) when disp_flush() is called by LVGL */
 void disp_disable_update(void);
+
+/* Diagnostics: total flush callback count since boot */
+extern volatile uint32_t g_lvgl_disp_flush_count;
 
 /**********************
  * MACROS

@@ -35,6 +35,7 @@ extern "C" {
  * GLOBAL PROTOTYPES
  **********************/
 void lv_port_indev_init(void);
+void lv_port_indev_set_group(lv_group_t *group);
 
 /**********************
  * MACROS

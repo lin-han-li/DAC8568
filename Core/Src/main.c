@@ -38,8 +38,7 @@
 /* USER CODE BEGIN Includes */
 #include "led.h"
 #include "sdram.h"
-#include "lcd_rgb.h"
-#include "touch_800x480.h"
+#include "lcd_spi_200.h"
 #include "lvgl.h" 
 #include "lv_port_disp.h"
 #include "lv_port_indev.h"
@@ -62,6 +61,9 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#ifndef APP_ENABLE_TIM2_IRQ
+#define APP_ENABLE_TIM2_IRQ 0
+#endif
 
 /* USER CODE END PD */
 
@@ -154,16 +156,32 @@ int main(void)
   MX_TIM2_Init();
   MX_SPI1_Init();
   MX_TIM12_Init();
+  MX_SPI6_Init();
   /* USER CODE BEGIN 2 */
   //		Stack_Size      EQU     0x00000400 //
   //		Stack_Size      EQU     0x0000FF00
 
   LED_Init();                              //
   SDRAM_Initialization_Sequence(&hsdram1); //
-  LCD_RGB_Init();                          //
-  Touch_Init();                            //
 
-  HAL_TIM_Base_Start_IT(&htim2);
+  /* SPI LCD 上电自检：先确保背光与基本显示链路正常。 */
+  SPI_LCD_Init();
+  LCD_SetBackColor(LCD_BLACK);
+  LCD_Clear();
+  LCD_SetColor(LCD_GREEN);
+  LCD_SetAsciiFont(&ASCII_Font24);
+  LCD_DisplayString(8, 8, "SPI LCD BOOT");
+
+  /* 当前版本不使用 RGB/LTDC，关闭 LTDC 中断与时钟避免总线干扰。 */
+  HAL_NVIC_DisableIRQ(LTDC_IRQn);
+  __HAL_RCC_LTDC_CLK_DISABLE();
+
+  if (APP_ENABLE_TIM2_IRQ) {
+    HAL_TIM_Base_Start_IT(&htim2);
+    printf("TIM2 IRQ enabled\r\n");
+  } else {
+    printf("TIM2 IRQ disabled for UI bring-up\r\n");
+  }
 
   printf("System Start...\r\n");
 
