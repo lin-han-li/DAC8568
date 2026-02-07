@@ -363,7 +363,7 @@
             </VariousControls>
           </Aads>
           <LDads>
-            <umfTarg>1</umfTarg>
+            <umfTarg>0</umfTarg>
             <Ropi>0</Ropi>
             <Rwpi>0</Rwpi>
             <noStLib>0</noStLib>
@@ -372,7 +372,7 @@
             <TextAddressRange></TextAddressRange>
             <DataAddressRange></DataAddressRange>
             <pXoBase></pXoBase>
-            <ScatterFile>STM32H750XBH6.sct</ScatterFile>
+            <ScatterFile>STM32H750XBH6_d2.sct</ScatterFile>
             <IncludeLibs></IncludeLibs>
             <IncludeLibsPath></IncludeLibsPath>
             <Misc></Misc>
@@ -5514,6 +5514,21 @@
               <FileName>lv_font_SourceHanSerifSC_Regular_16.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\HARDWORK\EdgeWind_UI\fonts\lv_font_SourceHanSerifSC_Regular_16.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>DAC8568</GroupName>
+          <Files>
+            <File>
+              <FileName>dac8568_dma.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\HARDWORK\DAC8568\dac8568_dma.c</FilePath>
+            </File>
+            <File>
+              <FileName>dac8568_dma.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\HARDWORK\DAC8568\dac8568_dma.h</FilePath>
             </File>
           </Files>
         </Group>

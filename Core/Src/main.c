@@ -39,6 +39,7 @@
 #include "led.h"
 #include "sdram.h"
 #include "lcd_spi_200.h"
+#include "DAC8568/dac8568_dma.h"
 #include "lvgl.h" 
 #include "lv_port_disp.h"
 #include "lv_port_indev.h"
@@ -63,6 +64,10 @@
 /* USER CODE BEGIN PD */
 #ifndef APP_ENABLE_TIM2_IRQ
 #define APP_ENABLE_TIM2_IRQ 0
+#endif
+
+#ifndef DAC_SAMPLE_RATE_HZ
+#define DAC_SAMPLE_RATE_HZ 240000u
 #endif
 
 /* USER CODE END PD */
@@ -175,6 +180,20 @@ int main(void)
   /* 当前版本不使用 RGB/LTDC，关闭 LTDC 中断与时钟避免总线干扰。 */
   HAL_NVIC_DisableIRQ(LTDC_IRQn);
   __HAL_RCC_LTDC_CLK_DISABLE();
+
+  /* DAC8568 streaming output test (SPI1+DMA paced by TIM12 TRGO). */
+  DAC8568_DMA_Init(DAC_SAMPLE_RATE_HZ);
+  DAC8568_DMA_Start();
+  printf("[DAC] start sps=%lu\r\n", (unsigned long)DAC_SAMPLE_RATE_HZ);
+  printf("[DAC] tim12 psc=%lu arr=%lu\r\n",
+         (unsigned long)htim12.Instance->PSC,
+         (unsigned long)htim12.Instance->ARR);
+  {
+    uint32_t spi1_ker_hz = HAL_RCCEx_GetPeriphCLKFreq(RCC_PERIPHCLK_SPI1);
+    printf("[DAC] spi1_ker=%luHz sck~=%luHz\r\n",
+           (unsigned long)spi1_ker_hz,
+           (unsigned long)(spi1_ker_hz / 4u));
+  }
 
   if (APP_ENABLE_TIM2_IRQ) {
     HAL_TIM_Base_Start_IT(&htim2);

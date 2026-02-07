@@ -193,6 +193,30 @@ void HAL_SPI_MspInit(SPI_HandleTypeDef* spiHandle)
     HAL_NVIC_SetPriority(SPI1_IRQn, 5, 0);
     HAL_NVIC_EnableIRQ(SPI1_IRQn);
   /* USER CODE BEGIN SPI1_MspInit 1 */
+    /*
+     * DAC path stability tuning under FreeRTOS load:
+     * - keep SPI1 prescaler at /4
+     * - force SPI123 kernel clock to 96 MHz -> SPI1 SCK ~= 24 MHz
+     *   (matches board-proven stable range for DAC8568 link)
+     */
+    PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_SPI1;
+    PeriphClkInitStruct.PLL2.PLL2M = 32;
+    PeriphClkInitStruct.PLL2.PLL2N = 96;
+    PeriphClkInitStruct.PLL2.PLL2P = 2;
+    PeriphClkInitStruct.PLL2.PLL2Q = 2;
+    PeriphClkInitStruct.PLL2.PLL2R = 2;
+    PeriphClkInitStruct.PLL2.PLL2RGE = RCC_PLL2VCIRANGE_1;
+    PeriphClkInitStruct.PLL2.PLL2VCOSEL = RCC_PLL2VCOWIDE;
+    PeriphClkInitStruct.PLL2.PLL2FRACN = 0;
+    PeriphClkInitStruct.Spi123ClockSelection = RCC_SPI123CLKSOURCE_PLL2;
+    if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
+    {
+      Error_Handler();
+    }
+
+    /* Keep DAC DMA completion path above FreeRTOS masking boundary. */
+    HAL_NVIC_SetPriority(DMA1_Stream4_IRQn, 4, 0);
+    HAL_NVIC_SetPriority(SPI1_IRQn, 4, 0);
 
   /* USER CODE END SPI1_MspInit 1 */
   }
@@ -306,5 +330,16 @@ void HAL_SPI_MspDeInit(SPI_HandleTypeDef* spiHandle)
 }
 
 /* USER CODE BEGIN 1 */
+
+void DAC8568_SPI1_ReInit(void)
+{
+  /*
+   * Re-apply CubeMX-generated SPI1/DMA configuration.
+   * Used by DAC8568 startup retry logic (avoids hardcoding configs in driver).
+   */
+  (void)HAL_SPI_Abort(&hspi1);
+  (void)HAL_SPI_DeInit(&hspi1);
+  MX_SPI1_Init();
+}
 
 /* USER CODE END 1 */

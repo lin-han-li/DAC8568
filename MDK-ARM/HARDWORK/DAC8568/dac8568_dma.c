@@ -77,7 +77,7 @@ static uint16_t g_lut_triangle[LUT_SIZE];
 static uint16_t g_lut_saw[LUT_SIZE];
 static uint16_t g_lut_square[LUT_SIZE];
 
-__attribute__((aligned(32))) static uint32_t g_tx_buf[DAC8568_TX_BUF_WORDS];
+__attribute__((section(".ram_d2"), aligned(32))) static uint32_t g_tx_buf[DAC8568_TX_BUF_WORDS];
 
 static volatile uint32_t g_tx_ok = 0u;
 static volatile uint32_t g_tx_fail = 0u;
@@ -120,14 +120,66 @@ static void dac8568_tim12_stop(void) {
   (void)HAL_TIM_Base_Stop(&htim12);
 }
 
+static uint32_t dac8568_tim12_get_timclk_hz(void) {
+  uint32_t pclk1 = HAL_RCC_GetPCLK1Freq();
+
+  /*
+   * On STM32H7, if APB prescaler != 1, the timer clock is doubled.
+   * TIM12 is on APB1 (D2 domain).
+   */
+  if ((RCC->D2CFGR & RCC_D2CFGR_D2PPRE1) != RCC_D2CFGR_D2PPRE1_DIV1) {
+    return pclk1 * 2u;
+  }
+  return pclk1;
+}
+
+static void dac8568_tim12_apply_sample_rate(uint32_t sample_rate_hz) {
+  if (sample_rate_hz == 0u) {
+    sample_rate_hz = 1u;
+  }
+
+  uint32_t timclk_hz = dac8568_tim12_get_timclk_hz();
+  if (timclk_hz == 0u) {
+    timclk_hz = 1u;
+  }
+
+  /*
+   * Fit TIM12 (16-bit) by selecting prescaler/ARR.
+   * target_hz = timclk / ((PSC+1) * (ARR+1))
+   */
+  uint32_t ticks = timclk_hz / sample_rate_hz;
+  if (ticks == 0u) {
+    ticks = 1u;
+  }
+
+  uint32_t prescaler = 0u;
+  if (ticks > 65536u) {
+    prescaler = (ticks + 65535u) / 65536u - 1u;
+    if (prescaler > 0xFFFFu) {
+      prescaler = 0xFFFFu;
+    }
+  }
+
+  uint32_t arr_plus1 = timclk_hz / (sample_rate_hz * (prescaler + 1u));
+  if (arr_plus1 == 0u) {
+    arr_plus1 = 1u;
+  }
+  if (arr_plus1 > 65536u) {
+    arr_plus1 = 65536u;
+  }
+
+  __HAL_TIM_SET_PRESCALER(&htim12, prescaler);
+  __HAL_TIM_SET_AUTORELOAD(&htim12, arr_plus1 - 1u);
+}
+
 static HAL_StatusTypeDef dac8568_tim12_start(void) {
   /*
-   * TIM12 is configured by CubeMX:
-   * - Prescaler=0, Period=1000-1 (240 MHz / 1000 = 240 kHz)
-   * - TRGO = Update Event
-   * No IRQ is required.
+   * TIM12 is configured by CubeMX with TRGO = Update Event.
+   * We override PSC/ARR at runtime to match g_sample_rate_hz, so the DAC sample
+   * rate is decoupled from the generated tim.c defaults.
    */
   MX_TIM12_Init();
+  dac8568_tim12_apply_sample_rate(g_sample_rate_hz);
   __HAL_TIM_SET_COUNTER(&htim12, 0u);
   __HAL_TIM_CLEAR_FLAG(&htim12, TIM_FLAG_UPDATE);
   if (HAL_TIM_Base_Start(&htim12) != HAL_OK) {
