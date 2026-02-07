@@ -59,6 +59,16 @@
 #define DAC8568_FRAME_B_PREFIX DAC8568_FRAME_PREFIX(DAC8568_CMD_WRITE_INPUT, DAC8568_CHANNEL_B)
 #define DAC8568_FRAME_C_PREFIX DAC8568_FRAME_PREFIX(DAC8568_CMD_WRITE_INPUT, DAC8568_CHANNEL_C)
 #define DAC8568_FRAME_D_PREFIX DAC8568_FRAME_PREFIX(DAC8568_CMD_WRITE_UPDATE_ALL, DAC8568_CHANNEL_D)
+#define DAC8568_INTERNAL_REF_ENABLE_FRAME ((((uint32_t)DAC8568_CMD_INTERNAL_REF) << 24) | 0x01u)
+#define DAC8568_SOFT_RESET_FRAME (((uint32_t)DAC8568_CMD_SOFTWARE_RESET) << 24)
+
+#define DAC8568_REF_REFRESH_INTERVAL_MS 250u
+#define DAC8568_STAGNANT_WINDOW_MS 40u
+#define DAC8568_STAGNANT_LIMIT 3u
+
+#define DAC8568_RECOVER_REASON_NONE 0u
+#define DAC8568_RECOVER_REASON_SPI_ERROR 1u
+#define DAC8568_RECOVER_REASON_STAGNANT 2u
 
 static uint32_t g_sample_rate_hz = 120000u;
 
@@ -86,6 +96,17 @@ static volatile uint32_t g_tick_count = 0u;
 static volatile uint32_t g_sample_count = 0u;
 static volatile uint8_t g_stream_running = 0u;
 static volatile uint32_t g_dma_buf_cycles = 0u;
+static volatile uint8_t g_ref_refresh_pending = 0u;
+static volatile uint32_t g_recover_count = 0u;
+static volatile uint32_t g_recover_reason = DAC8568_RECOVER_REASON_NONE;
+static volatile uint32_t g_ref_rearm_count = 0u;
+static volatile uint32_t g_ref_refresh_count = 0u;
+static volatile uint32_t g_stagnant_count = 0u;
+
+static uint32_t g_service_last_tick = 0u;
+static uint32_t g_service_last_samples = 0u;
+static uint32_t g_service_last_fail = 0u;
+static uint32_t g_last_ref_refresh_tick = 0u;
 
 static uint32_t dac8568_get_tx_sample_counter(void) {
   /* Derived from DMA progress for sub-buffer resolution (avoids 8191-sample quantization). */
@@ -230,6 +251,22 @@ static HAL_StatusTypeDef dac8568_spi_tx_word32_retry(uint32_t word, uint32_t ret
   return HAL_ERROR;
 }
 
+static HAL_StatusTypeDef dac8568_rearm_internal_ref(uint32_t retries) {
+  HAL_StatusTypeDef st = dac8568_spi_tx_word32_retry(DAC8568_INTERNAL_REF_ENABLE_FRAME, retries);
+  if (st == HAL_OK) {
+    g_ref_rearm_count++;
+  }
+  return st;
+}
+
+static HAL_StatusTypeDef dac8568_soft_reset_and_rearm(void) {
+  HAL_StatusTypeDef st_reset = dac8568_spi_tx_word32_retry(DAC8568_SOFT_RESET_FRAME, 1u);
+  HAL_Delay(2);
+  HAL_StatusTypeDef st_ref = dac8568_rearm_internal_ref(2u);
+  HAL_Delay(10);
+  return ((st_reset == HAL_OK) && (st_ref == HAL_OK)) ? HAL_OK : HAL_ERROR;
+}
+
 static void dac8568_prepare_lut(void) {
   for (uint32_t i = 0u; i < LUT_SIZE; ++i) {
     float phase = (2.0f * 3.1415926535f * (float)i) / (float)LUT_SIZE;
@@ -267,6 +304,7 @@ static void dac8568_dcache_clean(void *addr, size_t bytes) {
 }
 
 static void dac8568_fill_samples(uint32_t *dst, uint32_t sample_count) {
+  uint32_t *dst_base = dst;
   uint32_t phase_a = g_phase_a;
   uint32_t phase_b = g_phase_b;
   uint32_t phase_c = g_phase_c;
@@ -303,6 +341,12 @@ static void dac8568_fill_samples(uint32_t *dst, uint32_t sample_count) {
   g_tick_count += sample_count;
   g_sample_count += sample_count;
   g_tx_ok += sample_count;
+
+  if ((sample_count > 0u) && (g_ref_refresh_pending != 0u)) {
+    g_ref_refresh_pending = 0u;
+    dst_base[0] = DAC8568_INTERNAL_REF_ENABLE_FRAME;
+    g_ref_refresh_count++;
+  }
 }
 
 static void dac8568_dma_on_half(void) {
@@ -333,10 +377,8 @@ void DAC8568_DMA_Init(uint32_t sample_rate_hz) {
   dac8568_prepare_lut();
 
   /* Startup robustness: reset + internal ref enable (retry). */
-  (void)dac8568_spi_tx_word32_retry(((uint32_t)DAC8568_CMD_SOFTWARE_RESET << 24), 2u);
-  HAL_Delay(20);
-  (void)dac8568_spi_tx_word32_retry(((uint32_t)DAC8568_CMD_INTERNAL_REF << 24) | 0x01u, 2u);
-  HAL_Delay(200);
+  (void)dac8568_soft_reset_and_rearm();
+  HAL_Delay(100);
 }
 
 void DAC8568_DMA_Start(void) {
@@ -364,6 +406,7 @@ void DAC8568_DMA_Start(void) {
   g_tick_count = 0u;
   g_sample_count = 0u;
   g_dma_buf_cycles = 0u;
+  g_stagnant_count = 0u;
 
   /*
    * TIM-paced streaming without 240 kHz IRQ:
@@ -397,6 +440,11 @@ void DAC8568_DMA_Start(void) {
   }
 
   g_stream_running = 1u;
+  g_ref_refresh_pending = 1u;
+  g_service_last_samples = dac8568_get_tx_sample_counter();
+  g_service_last_fail = g_tx_fail;
+  g_service_last_tick = HAL_GetTick();
+  g_last_ref_refresh_tick = g_service_last_tick;
 }
 
 void DAC8568_DMA_OnTimerTick(void) {
@@ -438,6 +486,75 @@ void DAC8568_DMA_GetTickCounter(uint32_t *tick_count) {
 void DAC8568_DMA_GetSampleCounter(uint32_t *sample_count) {
   if (sample_count != NULL) {
     *sample_count = dac8568_get_tx_sample_counter();
+  }
+}
+
+void DAC8568_DMA_Service(void) {
+  if (g_stream_running == 0u) {
+    return;
+  }
+
+  uint32_t now = HAL_GetTick();
+  uint32_t samples = dac8568_get_tx_sample_counter();
+  uint32_t fails = g_tx_fail;
+  uint32_t recover_reason = DAC8568_RECOVER_REASON_NONE;
+
+  if (fails != g_service_last_fail) {
+    g_service_last_fail = fails;
+    recover_reason |= DAC8568_RECOVER_REASON_SPI_ERROR;
+  }
+
+  if (samples == g_service_last_samples) {
+    if ((now - g_service_last_tick) >= DAC8568_STAGNANT_WINDOW_MS) {
+      g_service_last_tick = now;
+      g_stagnant_count++;
+      if (g_stagnant_count >= DAC8568_STAGNANT_LIMIT) {
+        recover_reason |= DAC8568_RECOVER_REASON_STAGNANT;
+      }
+    }
+  } else {
+    g_service_last_samples = samples;
+    g_service_last_tick = now;
+    g_stagnant_count = 0u;
+  }
+
+  if ((now - g_last_ref_refresh_tick) >= DAC8568_REF_REFRESH_INTERVAL_MS) {
+    g_ref_refresh_pending = 1u;
+    g_last_ref_refresh_tick = now;
+  }
+
+  if (recover_reason == DAC8568_RECOVER_REASON_NONE) {
+    return;
+  }
+
+  g_recover_reason = recover_reason;
+  g_recover_count++;
+
+  g_stream_running = 0u;
+  dac8568_tim12_stop();
+  (void)HAL_SPI_Abort(&hspi1);
+
+  (void)dac8568_soft_reset_and_rearm();
+  DAC8568_DMA_Start();
+}
+
+void DAC8568_DMA_GetHealth(uint32_t *recover_count, uint32_t *recover_reason,
+                           uint32_t *ref_rearm_count, uint32_t *ref_refresh_count,
+                           uint32_t *stagnant_count) {
+  if (recover_count != NULL) {
+    *recover_count = g_recover_count;
+  }
+  if (recover_reason != NULL) {
+    *recover_reason = g_recover_reason;
+  }
+  if (ref_rearm_count != NULL) {
+    *ref_rearm_count = g_ref_rearm_count;
+  }
+  if (ref_refresh_count != NULL) {
+    *ref_refresh_count = g_ref_refresh_count;
+  }
+  if (stagnant_count != NULL) {
+    *stagnant_count = g_stagnant_count;
   }
 }
 

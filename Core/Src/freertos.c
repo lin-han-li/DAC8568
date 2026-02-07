@@ -33,6 +33,7 @@
 #include "lv_port_indev.h"
 // Demo 已移除，使用自定义 EdgeWind UI
 #include "EdgeWind_UI/edgewind_ui.h"
+#include "DAC8568/dac8568_dma.h"
 #include <stdio.h>
 
 /* USER CODE END Includes */
@@ -487,10 +488,38 @@ void LED_Task(void *argument)
 void Main_Task(void *argument)
 {
   /* USER CODE BEGIN Main_Task */
+  TickType_t last_log = xTaskGetTickCount();
   /* Infinite loop */
   for(;;)
   {
-    osDelay(1);
+    DAC8568_DMA_Service();
+
+    TickType_t now = xTaskGetTickCount();
+    if ((now - last_log) >= pdMS_TO_TICKS(1000)) {
+      uint32_t ok = 0u;
+      uint32_t fail = 0u;
+      uint32_t skip = 0u;
+      uint32_t recover = 0u;
+      uint32_t reason = 0u;
+      uint32_t ref_rearm = 0u;
+      uint32_t ref_refresh = 0u;
+      uint32_t stagnant = 0u;
+
+      DAC8568_DMA_GetStats(&ok, &fail, &skip);
+      DAC8568_DMA_GetHealth(&recover, &reason, &ref_rearm, &ref_refresh, &stagnant);
+      printf("[DAC] ok=%lu fail=%lu skip=%lu rec=%lu reason=%lu ref=%lu refresh=%lu stagnant=%lu\r\n",
+             (unsigned long)ok,
+             (unsigned long)fail,
+             (unsigned long)skip,
+             (unsigned long)recover,
+             (unsigned long)reason,
+             (unsigned long)ref_rearm,
+             (unsigned long)ref_refresh,
+             (unsigned long)stagnant);
+      last_log = now;
+    }
+
+    osDelay(5);
   }
   /* USER CODE END Main_Task */
 }
