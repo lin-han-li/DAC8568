@@ -29,12 +29,6 @@ extern pFONT Font24;	// 2412 字体
 extern pFONT Font20; // 2010 字体
 extern pFONT Font16; // 1608 字体
 extern pFONT Font12; // 1206 字体
-/* Compatibility aliases for SPI 2.0" LCD driver */
-#define ASCII_Font32 Font32
-#define ASCII_Font24 Font24
-#define ASCII_Font20 Font20
-#define ASCII_Font16 Font16
-#define ASCII_Font12 Font12
 
 #endif 
  

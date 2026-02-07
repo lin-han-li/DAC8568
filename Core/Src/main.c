@@ -22,6 +22,7 @@
 #include "dma.h"
 #include "dma2d.h"
 #include "fatfs.h"
+#include "ltdc.h"
 #include "mdma.h"
 #include "memorymap.h"
 #include "quadspi.h"
@@ -37,7 +38,8 @@
 /* USER CODE BEGIN Includes */
 #include "led.h"
 #include "sdram.h"
-#include "lcd_spi_200.h"
+#include "lcd_rgb.h"
+#include "touch_800x480.h"
 #include "DAC8568/dac8568_dma.h"
 #include "lvgl.h" 
 #include "lv_port_disp.h"
@@ -61,9 +63,6 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#ifndef APP_ENABLE_TIM2_IRQ
-#define APP_ENABLE_TIM2_IRQ 0
-#endif
 
 #ifndef DAC_SAMPLE_RATE_HZ
 #define DAC_SAMPLE_RATE_HZ 240000u
@@ -149,6 +148,7 @@ int main(void)
   MX_USART1_UART_Init();
   MX_FMC_Init();
   MX_DMA2D_Init();
+  MX_LTDC_Init();
   MX_TIM3_Init();
   MX_SDMMC1_SD_Init();
   MX_FATFS_Init();
@@ -156,29 +156,21 @@ int main(void)
   MX_TIM16_Init();
   MX_USART2_UART_Init();
   MX_QUADSPI_Init();
+  MX_TIM2_Init();
   MX_SPI1_Init();
   MX_TIM12_Init();
-  MX_SPI6_Init();
   /* USER CODE BEGIN 2 */
   //		Stack_Size      EQU     0x00000400 //
   //		Stack_Size      EQU     0x0000FF00
 
   LED_Init();                              //
   SDRAM_Initialization_Sequence(&hsdram1); //
+  LCD_RGB_Init();                          //
+  Touch_Init();                            //
 
-  /* SPI LCD 上电自检：先确保背光与基本显示链路正常。 */
-  SPI_LCD_Init();
-  LCD_SetBackColor(LCD_BLACK);
-  LCD_Clear();
-  LCD_SetColor(LCD_GREEN);
-  LCD_SetAsciiFont(&ASCII_Font24);
-  LCD_DisplayString(8, 8, "SPI LCD BOOT");
+  HAL_TIM_Base_Start_IT(&htim2);
 
-  /* 当前版本不使用 RGB/LTDC，关闭 LTDC 中断与时钟避免总线干扰。 */
-  HAL_NVIC_DisableIRQ(LTDC_IRQn);
-  __HAL_RCC_LTDC_CLK_DISABLE();
-
-  /* DAC8568 streaming output test (SPI1+DMA paced by TIM12 TRGO). */
+  /* DAC8568 streaming output (SPI1+DMA paced by TIM12 TRGO). */
   DAC8568_DMA_Init(DAC_SAMPLE_RATE_HZ);
   DAC8568_DMA_Start();
   printf("[DAC] start sps=%lu\r\n", (unsigned long)DAC_SAMPLE_RATE_HZ);

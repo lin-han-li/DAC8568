@@ -1,0 +1,40 @@
+; *************************************************************
+; *** Scatter-Loading Description File (custom)              ***
+; *************************************************************
+;
+; Purpose:
+; - Place the DAC8568 SPI1 TX DMA ring buffer into D2 SRAM (0x3000_0000)
+;   to reduce AXI SRAM contention with LVGL/SPI LCD rendering.
+;
+; NOTE:
+; - This file is referenced from the uVision project via a relative path:
+;   "..\\STM32H750XBH6_d2.sct" (resolved from the output directory).
+;
+
+LR_IROM1 0x08000000 0x00100000  {    ; Bank1 Flash (1MB)
+  ER_IROM1 0x08000000 0x00100000  {  ; load address = execution address
+   *.o (RESET, +First)
+   *(InRoot$$Sections)
+   .ANY (+RO)
+   .ANY (+XO)
+  }
+
+  RW_D2SRAM 0x30000000 0x00040000  {  ; D2 SRAM (SRAM1+SRAM2)
+   *(.ram_d2*)
+  }
+
+  RW_IRAM1 0x20000000 0x00020000  {  ; DTCM RAM
+   .ANY (+RW +ZI)
+  }
+
+  RW_IRAM2 0x24000000 0x00080000  {  ; AXI SRAM
+   .ANY (+RW +ZI)
+  }
+}
+
+LR_IROM2 0x08100000 0x00100000  {    ; Bank2 Flash (1MB)
+  ER_IROM2 0x08100000 0x00100000  {  ; load address = execution address
+   .ANY (+RO)
+  }
+}
+
