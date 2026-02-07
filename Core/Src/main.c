@@ -156,7 +156,6 @@ int main(void)
   MX_TIM16_Init();
   MX_USART2_UART_Init();
   MX_QUADSPI_Init();
-  MX_TIM2_Init();
   MX_SPI1_Init();
   MX_TIM12_Init();
   MX_SPI6_Init();
@@ -191,13 +190,6 @@ int main(void)
     printf("[DAC] spi1_ker=%luHz sck~=%luHz\r\n",
            (unsigned long)spi1_ker_hz,
            (unsigned long)(spi1_ker_hz / 4u));
-  }
-
-  if (APP_ENABLE_TIM2_IRQ) {
-    HAL_TIM_Base_Start_IT(&htim2);
-    printf("TIM2 IRQ enabled\r\n");
-  } else {
-    printf("TIM2 IRQ disabled for UI bring-up\r\n");
   }
 
   printf("System Start...\r\n");
