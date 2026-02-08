@@ -166,3 +166,7 @@ __pycache__/
 !*.txt
 !LICENSE
 !README*
+
+# Keep reference project untracked
+STM32H750XBH6_ESP8266_FreeRTOS_LVGL9.4.0/
+
