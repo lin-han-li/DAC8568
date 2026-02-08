@@ -72,20 +72,22 @@ FRESULT SD_Init(void)
 	
 	/* 快速检查 SD 卡是否可访问，避免阻塞 */
 	printf("[SD] Checking card access...\r\n");
-	FILINFO fno;
-	res = f_stat("0:/", &fno);
-	printf("[SD] f_stat root -> %d\r\n", (int)res);
+	DIR dir;
+	res = f_opendir(&dir, "0:/");
+	printf("[SD] opendir root -> %d\r\n", (int)res);
 	if (res != FR_OK) {
 		printf("[SD] card not ready: %d\r\n", (int)res);
 		f_mount(NULL, SDPath, 0); /* 卸载避免后续误用 */
 		return res;
 	}
+	(void)f_closedir(&dir);
 	
 	printf("[SD] Creating directories...\r\n");
 	(void)SD_MkdirRecursive("0:/config");
 	(void)SD_MkdirRecursive("0:/data");
 	(void)SD_MkdirRecursive("0:/logs");
 	(void)SD_MkdirRecursive("0:/backup");
+	(void)SD_MkdirRecursive("0:/wave");
 	printf("[SD] Init complete\r\n");
 	return FR_OK;
 }

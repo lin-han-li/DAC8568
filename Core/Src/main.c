@@ -41,6 +41,7 @@
 #include "lcd_rgb.h"
 #include "touch_800x480.h"
 #include "DAC8568/dac8568_dma.h"
+#include "sd_waveform.h"
 #include "lvgl.h" 
 #include "lv_port_disp.h"
 #include "lv_port_indev.h"
@@ -66,6 +67,14 @@
 
 #ifndef DAC_SAMPLE_RATE_HZ
 #define DAC_SAMPLE_RATE_HZ 240000u
+#endif
+
+#ifndef DAC_WAVE_SD_PATH
+#define DAC_WAVE_SD_PATH "0:/wave/dac8568_wave.bin"
+#endif
+
+#ifndef DAC_WAVE_REQUIRE_SD_SYNC
+#define DAC_WAVE_REQUIRE_SD_SYNC 1
 #endif
 
 /* USER CODE END PD */
@@ -170,19 +179,11 @@ int main(void)
 
   HAL_TIM_Base_Start_IT(&htim2);
 
-  /* DAC8568 streaming output (SPI1+DMA paced by TIM12 TRGO). */
+  /* DAC8568 streaming output (SPI1+DMA paced by TIM12 TRGO).
+   * Wave sync + stream start is done in RTOS (see freertos.c Main_Task). */
   DAC8568_DMA_Init(DAC_SAMPLE_RATE_HZ);
-  DAC8568_DMA_Start();
-  printf("[DAC] start sps=%lu\r\n", (unsigned long)DAC_SAMPLE_RATE_HZ);
-  printf("[DAC] tim12 psc=%lu arr=%lu\r\n",
-         (unsigned long)htim12.Instance->PSC,
-         (unsigned long)htim12.Instance->ARR);
-  {
-    uint32_t spi1_ker_hz = HAL_RCCEx_GetPeriphCLKFreq(RCC_PERIPHCLK_SPI1);
-    printf("[DAC] spi1_ker=%luHz sck~=%luHz\r\n",
-           (unsigned long)spi1_ker_hz,
-           (unsigned long)(spi1_ker_hz / 4u));
-  }
+  DAC8568_OutputFixedVoltage(0.0f);
+  printf("[DAC] init ok, waiting SD sync in RTOS\r\n");
 
   printf("System Start...\r\n");
 

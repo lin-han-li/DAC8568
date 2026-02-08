@@ -34,7 +34,9 @@
 // Demo 已移除，使用自定义 EdgeWind UI
 #include "EdgeWind_UI/edgewind_ui.h"
 #include "DAC8568/dac8568_dma.h"
+#include "sd_waveform.h"
 #include <stdio.h>
+#include <string.h>
 
 /* USER CODE END Includes */
 
@@ -472,6 +474,55 @@ void LED_Task(void *argument)
 void Main_Task(void *argument)
 {
   /* USER CODE BEGIN Main_Task */
+  SD_DacWaveInfo_t wave_info;
+  uint8_t stream_enabled = 0u;
+
+  memset(&wave_info, 0, sizeof(wave_info));
+
+  /* NOTE: FatFs SD driver (FATFS/Target/sd_diskio.c) gates SD_initialize() on
+   * osKernelRunning(), so SD mount/sync must happen after scheduler start. */
+  if (SD_Wave_SyncDacToQspi(DAC_WAVE_SD_PATH, &wave_info)) {
+    printf("[DAC WAVE] sync from SD ok\r\n");
+    if (DAC8568_DMA_UseQspiWave(wave_info.qspi_mmap_addr,
+                                wave_info.sample_count,
+                                wave_info.sample_rate_hz) == 0) {
+      printf("[DAC WAVE] source=QSPI sps=%lu count=%lu addr=0x%08lX\r\n",
+             (unsigned long)wave_info.sample_rate_hz,
+             (unsigned long)wave_info.sample_count,
+             (unsigned long)wave_info.qspi_mmap_addr);
+      stream_enabled = 1u;
+    } else {
+      printf("[DAC WAVE] source switch failed after SD sync\r\n");
+    }
+  }
+#if (DAC_WAVE_REQUIRE_SD_SYNC == 0)
+  else if (SD_Wave_LoadDacInfoFromQspi(&wave_info)) {
+    printf("[DAC WAVE] load from QSPI ok\r\n");
+    if (DAC8568_DMA_UseQspiWave(wave_info.qspi_mmap_addr,
+                                wave_info.sample_count,
+                                wave_info.sample_rate_hz) == 0) {
+      printf("[DAC WAVE] source=QSPI sps=%lu count=%lu addr=0x%08lX\r\n",
+             (unsigned long)wave_info.sample_rate_hz,
+             (unsigned long)wave_info.sample_count,
+             (unsigned long)wave_info.qspi_mmap_addr);
+      stream_enabled = 1u;
+    } else {
+      printf("[DAC WAVE] source switch failed, no output\r\n");
+    }
+  }
+#endif
+  else {
+    printf("[DAC WAVE] SD sync failed: %s\r\n", DAC_WAVE_SD_PATH);
+  }
+
+  if (stream_enabled != 0u) {
+    DAC8568_DMA_Start();
+    printf("[DAC] start sps=%lu\r\n", (unsigned long)DAC_SAMPLE_RATE_HZ);
+  } else {
+    DAC8568_OutputFixedVoltage(0.0f);
+    printf("[DAC] stream disabled (no waveform output)\r\n");
+  }
+
   TickType_t last_log = xTaskGetTickCount();
   /* Infinite loop */
   for(;;)
