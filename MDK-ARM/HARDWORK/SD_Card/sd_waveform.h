@@ -8,11 +8,18 @@
 #define SD_DAC_WAVE_MAGIC 0x44384357u /* "D8CW" */
 #define SD_DAC_WAVE_VERSION 1u
 
-/* Reserved QSPI region for DAC waveform direct-read playback.
- * Keep clear of GUI resources (0x00000000~0x00FFFFFF) and self-test tail area.
+/*
+ * Reserved QSPI region for DAC waveform direct-read playback.
+ *
+ * W25Q256 total size: 32MB (0x02000000).
+ * Partition:
+ *  - 0x00000000 ~ 0x003FFFFF (4MB): reserved for future use
+ *  - 0x00400000 ~ 0x01FFFFFF (28MB): DAC waveform storage
+ *
+ * UI assets sync to QSPI is disabled in this project; the reserved 4MB stays free.
  */
-#define SD_DAC_QSPI_BASE_OFFSET 0x01F00000u
-#define SD_DAC_QSPI_REGION_SIZE 0x000F0000u
+#define SD_DAC_QSPI_BASE_OFFSET 0x00400000u
+#define SD_DAC_QSPI_REGION_SIZE 0x01C00000u
 
 typedef struct {
 	uint32_t magic;

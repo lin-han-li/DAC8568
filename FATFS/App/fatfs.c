@@ -38,7 +38,7 @@ void MX_FATFS_Init(void)
 
   /* USER CODE BEGIN Init */
   /* 仅链接驱动（不依赖 QSPI 外设已初始化）。真正 mount/mkfs 请在 QSPI 初始化完成后调用 QSPIFS_MountOrMkfs() */
-  retQSPI = FATFS_LinkDriverEx(&QSPI_Driver, QSPIPath, 1);
+  retQSPI = 0;
   /* USER CODE END Init */
 }
 
@@ -62,6 +62,10 @@ DWORD get_fattime(void)
 /* fatfs.c 可能不会默认包含 <stdio.h>，这里在 USER CODE 区域内前置声明，避免 C99 下隐式声明报错 */
 extern int printf(const char * format, ...);
 
+#ifndef QSPI_FATFS_ENABLE
+#define QSPI_FATFS_ENABLE 0
+#endif
+
 static FRESULT qspi_create_marker(const char * path)
 {
   FIL fil;
@@ -75,6 +79,10 @@ static FRESULT qspi_create_marker(const char * path)
 
 FRESULT QSPIFS_MountOrMkfs(void)
 {
+#if (QSPI_FATFS_ENABLE == 0)
+  printf("[QSPI_FS] disabled\r\n");
+  return FR_NOT_READY;
+#endif
   FRESULT res = f_mount(&QSPIFatFS, (TCHAR const *)QSPIPath, 1);
   printf("[QSPI_FS] mount %s -> %d\r\n", QSPIPath, (int)res);
   if (res == FR_OK) {
