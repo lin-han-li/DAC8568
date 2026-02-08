@@ -4,7 +4,7 @@ import math
 import os
 import struct
 
-MAGIC = 0x44384357  # "D8CW"
+MAGIC = 0x44384357  # "D8CW" (legacy format used by commit 504cb0...)
 VERSION = 1
 CHANNELS = 4
 DATA_OFFSET = 64
@@ -113,3 +113,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

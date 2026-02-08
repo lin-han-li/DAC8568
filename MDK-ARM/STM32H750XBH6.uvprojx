@@ -4031,6 +4031,16 @@
               <FilePath>.\HARDWORK\SD_Card\sd_waveform.h</FilePath>
             </File>
             <File>
+              <FileName>dac_wave_sync.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\HARDWORK\SD_Card\dac_wave_sync.c</FilePath>
+            </File>
+            <File>
+              <FileName>dac_wave_sync.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\HARDWORK\SD_Card\dac_wave_sync.h</FilePath>
+            </File>
+            <File>
               <FileName>sd_fault_log.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\HARDWORK\SD_Card\sd_fault_log.c</FilePath>
