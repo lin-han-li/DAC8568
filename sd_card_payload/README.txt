@@ -1,13 +1,10 @@
-Copy these files to your SD card root:
+Copy the folder "wave" to SD card root.
 
-- sd_card_payload/wave/dac8568_wave.bin -> SD:/wave/dac8568_wave.bin
+Expected file path on target:
+0:/wave/dac8568_wave.bin
 
-Firmware behavior:
-
-- If SD sync to W25Q256 succeeds: waveform streams from QSPI memory-mapped region.
-- If SD sync fails: waveform output is disabled (fail-closed).
-
-Wave file format:
-
-- Uses legacy D8CW header format (same as commit 504cb0...).
-- Generator: `python tools/gen_dac_sd_wave.py`
+Boot behavior:
+1) Firmware tries SD -> QSPI sync from the file above.
+2) If sync succeeds, DAC switches to QSPI direct-read playback.
+3) If SD file is absent, firmware tries loading waveform header from QSPI.
+4) If both fail, firmware falls back to built-in LUT waveform.

@@ -65,6 +65,8 @@
 #define DAC8568_REF_REFRESH_INTERVAL_MS 250u
 #define DAC8568_STAGNANT_WINDOW_MS 40u
 #define DAC8568_STAGNANT_LIMIT 3u
+#define DAC8568_QSPI_MMAP_BASE 0x90000000u
+#define DAC8568_QSPI_MMAP_LIMIT 0x92000000u
 
 #define DAC8568_RECOVER_REASON_NONE 0u
 #define DAC8568_RECOVER_REASON_SPI_ERROR 1u
@@ -107,6 +109,10 @@ static uint32_t g_service_last_tick = 0u;
 static uint32_t g_service_last_samples = 0u;
 static uint32_t g_service_last_fail = 0u;
 static uint32_t g_last_ref_refresh_tick = 0u;
+static volatile DAC8568_SourceMode_t g_source_mode = DAC8568_SOURCE_LUT;
+static const uint16_t *g_qspi_wave_data = NULL;
+static uint32_t g_qspi_wave_samples = 0u;
+static uint32_t g_qspi_wave_index = 0u;
 
 static uint32_t dac8568_get_tx_sample_counter(void) {
   /* Derived from DMA progress for sub-buffer resolution (avoids 8191-sample quantization). */
@@ -309,34 +315,57 @@ static void dac8568_fill_samples(uint32_t *dst, uint32_t sample_count) {
   uint32_t phase_b = g_phase_b;
   uint32_t phase_c = g_phase_c;
   uint32_t phase_d = g_phase_d;
+  uint32_t qspi_index = g_qspi_wave_index;
 
   const uint32_t inc_a = g_phase_inc_a;
   const uint32_t inc_b = g_phase_inc_b;
   const uint32_t inc_c = g_phase_inc_c;
   const uint32_t inc_d = g_phase_inc_d;
+  const uint8_t use_qspi = (g_source_mode == DAC8568_SOURCE_QSPI) &&
+                           (g_qspi_wave_data != NULL) &&
+                           (g_qspi_wave_samples > 0u);
 
   for (uint32_t i = 0u; i < sample_count; i++) {
-    uint16_t code_a = g_lut_sine[phase_a >> LUT_PHASE_SHIFT];
-    phase_a += inc_a;
+    uint16_t code_a;
+    uint16_t code_b;
+    uint16_t code_c;
+    uint16_t code_d;
+
+    if (use_qspi != 0u) {
+      const uint16_t *sample = &g_qspi_wave_data[qspi_index * DAC8568_WORDS_PER_SAMPLE];
+      code_a = sample[0];
+      code_b = sample[1];
+      code_c = sample[2];
+      code_d = sample[3];
+      qspi_index++;
+      if (qspi_index >= g_qspi_wave_samples) {
+        qspi_index = 0u;
+      }
+    } else {
+      code_a = g_lut_sine[phase_a >> LUT_PHASE_SHIFT];
+      phase_a += inc_a;
+      code_b = g_lut_triangle[phase_b >> LUT_PHASE_SHIFT];
+      phase_b += inc_b;
+      code_c = g_lut_saw[phase_c >> LUT_PHASE_SHIFT];
+      phase_c += inc_c;
+      code_d = g_lut_square[phase_d >> LUT_PHASE_SHIFT];
+      phase_d += inc_d;
+    }
+
     *dst++ = DAC8568_FRAME_A_PREFIX | ((uint32_t)code_a << 4);
-
-    uint16_t code_b = g_lut_triangle[phase_b >> LUT_PHASE_SHIFT];
-    phase_b += inc_b;
     *dst++ = DAC8568_FRAME_B_PREFIX | ((uint32_t)code_b << 4);
-
-    uint16_t code_c = g_lut_saw[phase_c >> LUT_PHASE_SHIFT];
-    phase_c += inc_c;
     *dst++ = DAC8568_FRAME_C_PREFIX | ((uint32_t)code_c << 4);
-
-    uint16_t code_d = g_lut_square[phase_d >> LUT_PHASE_SHIFT];
-    phase_d += inc_d;
     *dst++ = DAC8568_FRAME_D_PREFIX | ((uint32_t)code_d << 4);
   }
 
-  g_phase_a = phase_a;
-  g_phase_b = phase_b;
-  g_phase_c = phase_c;
-  g_phase_d = phase_d;
+  if (use_qspi != 0u) {
+    g_qspi_wave_index = qspi_index;
+  } else {
+    g_phase_a = phase_a;
+    g_phase_b = phase_b;
+    g_phase_c = phase_c;
+    g_phase_d = phase_d;
+  }
 
   g_tick_count += sample_count;
   g_sample_count += sample_count;
@@ -362,6 +391,7 @@ static void dac8568_dma_on_full(void) {
 void DAC8568_DMA_Init(uint32_t sample_rate_hz) {
   g_sample_rate_hz = (sample_rate_hz == 0u) ? 48000u : sample_rate_hz;
   g_phase_a = g_phase_b = g_phase_c = g_phase_d = 0u;
+  g_qspi_wave_index = 0u;
   dac8568_update_phase_inc(g_sample_rate_hz);
 
   /*
@@ -395,6 +425,7 @@ void DAC8568_DMA_Start(void) {
   g_tick_skip = 0u;
   g_tick_count = 0u;
   g_sample_count = 0u;
+  g_qspi_wave_index = 0u;
 
   /* Prefill both halves before starting the circular DMA stream. */
   dac8568_fill_samples(&g_tx_buf[0], DAC8568_SAMPLES_PER_HALF);
@@ -556,6 +587,64 @@ void DAC8568_DMA_GetHealth(uint32_t *recover_count, uint32_t *recover_reason,
   if (stagnant_count != NULL) {
     *stagnant_count = g_stagnant_count;
   }
+}
+
+int32_t DAC8568_DMA_UseQspiWave(uint32_t qspi_mmap_addr, uint32_t sample_count,
+                                uint32_t sample_rate_hz) {
+  uint8_t restart_stream = 0u;
+
+  if ((qspi_mmap_addr < DAC8568_QSPI_MMAP_BASE) || (qspi_mmap_addr >= DAC8568_QSPI_MMAP_LIMIT)) {
+    return -1;
+  }
+  if (sample_count == 0u) {
+    return -2;
+  }
+
+  if (g_stream_running != 0u) {
+    restart_stream = 1u;
+    g_stream_running = 0u;
+    dac8568_tim12_stop();
+    (void)HAL_SPI_Abort(&hspi1);
+  }
+
+  g_qspi_wave_data = (const uint16_t *)(uintptr_t)qspi_mmap_addr;
+  g_qspi_wave_samples = sample_count;
+  g_qspi_wave_index = 0u;
+  g_source_mode = DAC8568_SOURCE_QSPI;
+
+  if (sample_rate_hz != 0u) {
+    g_sample_rate_hz = sample_rate_hz;
+    dac8568_update_phase_inc(g_sample_rate_hz);
+  }
+
+  if (restart_stream != 0u) {
+    DAC8568_DMA_Start();
+  }
+  return 0;
+}
+
+void DAC8568_DMA_UseBuiltInWave(void) {
+  uint8_t restart_stream = 0u;
+
+  if (g_stream_running != 0u) {
+    restart_stream = 1u;
+    g_stream_running = 0u;
+    dac8568_tim12_stop();
+    (void)HAL_SPI_Abort(&hspi1);
+  }
+
+  g_source_mode = DAC8568_SOURCE_LUT;
+  g_qspi_wave_data = NULL;
+  g_qspi_wave_samples = 0u;
+  g_qspi_wave_index = 0u;
+
+  if (restart_stream != 0u) {
+    DAC8568_DMA_Start();
+  }
+}
+
+DAC8568_SourceMode_t DAC8568_DMA_GetSourceMode(void) {
+  return g_source_mode;
 }
 
 void DAC8568_OutputFixedVoltage(float voltage) {

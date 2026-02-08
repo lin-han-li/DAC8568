@@ -34,7 +34,9 @@
 // Demo 已移除，使用自定义 EdgeWind UI
 #include "EdgeWind_UI/edgewind_ui.h"
 #include "DAC8568/dac8568_dma.h"
+#include "sd_waveform.h"
 #include <stdio.h>
+#include <string.h>
 
 /* USER CODE END Includes */
 
@@ -371,9 +373,7 @@ void MX_FREERTOS_Init(void) {
   ESP8266Handle = osThreadNew(ESP8266_Task, NULL, &ESP8266_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
-  /* Keep LED heartbeat alive even if LVGL display init stalls. */
-  (void)osThreadSetPriority(LEDHandle, osPriorityAboveNormal);
-  (void)osThreadSetPriority(LVGL940Handle, osPriorityNormal);
+  /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */
@@ -392,69 +392,55 @@ void MX_FREERTOS_Init(void) {
 void LVGL_Task(void *argument)
 {
   /* USER CODE BEGIN LVGL_Task */
+  uint32_t time;
   UBaseType_t min_hw = (UBaseType_t)0xFFFFFFFFu;
   TickType_t last_log = 0;
-  uint32_t last_flush = 0;
-  lv_obj_t *safe_scr = NULL;
-  lv_obj_t *safe_lbl = NULL;
-
-  printf("[LVGL] task start\r\n");
-
-  lv_init();
-  printf("[LVGL] after lv_init, tick=%lu\r\n", (unsigned long)lv_tick_get());
-
-  lv_port_disp_init();
-  printf("[LVGL] after disp init\r\n");
-
-  lv_port_indev_init();
-  printf("[LVGL] after indev init\r\n");
-
-  /* Safe fallback screen: verify LVGL flush path first. */
-  safe_scr = lv_obj_create(NULL);
-  lv_obj_set_style_bg_color(safe_scr, lv_color_hex(0x000000), 0);
-  lv_obj_set_style_bg_opa(safe_scr, LV_OPA_COVER, 0);
-  safe_lbl = lv_label_create(safe_scr);
-  lv_obj_set_style_text_color(safe_lbl, lv_color_hex(0x00FF66), 0);
-  lv_label_set_text(safe_lbl, "LVGL START");
-  lv_obj_align(safe_lbl, LV_ALIGN_TOP_LEFT, 8, 8);
-  lv_screen_load(safe_scr);
-  lv_refr_now(NULL);
-  printf("[LVGL] safe screen loaded\r\n");
-
+  //  // LVGL图形库初始化三件套
+  lv_init();            // 初始化LVGL核心库（内存管理、内部变量等）
+  lv_port_disp_init();  // 初始化显示驱动接口（配置帧缓冲区、注册刷新回调）
+  lv_port_indev_init(); // 初始化输入设备接口（注册触摸屏/编码器驱动）
+  
+  /* 初始化 EdgeWind 自定义 UI */
   edgewind_ui_init();
-  printf("[LVGL] edgewind init done\r\n");
-
+  /* Infinite loop */
   for(;;)
   {
+
+    /* === 临界区开始（保护LVGL操作）=== */
     osMutexAcquire(mutex_id, osWaitForever);
 
+    /* EdgeWind UI 数据刷新 */
     edgewind_ui_refresh();
+    
+    /* LVGL 核心处理 */
     lv_task_handler();
 
     osMutexRelease(mutex_id);
+    /* === 临界区结束 === */
 
+    /* 低频监测 LVGL 线程栈水位（观察是否逼近溢出） */
     TickType_t now = xTaskGetTickCount();
     if ((now - last_log) > pdMS_TO_TICKS(2000)) {
       UBaseType_t hw = uxTaskGetStackHighWaterMark(NULL);
       if (hw < min_hw) {
         min_hw = hw;
-      }
-
-      {
-        uint32_t flush_now = g_lvgl_disp_flush_count;
-        printf("[LVGL] hb tick=%lu flush=%lu(+%lu) stackHW=%lu freeHeap=%lu\r\n",
-               (unsigned long)lv_tick_get(),
-               (unsigned long)flush_now,
-               (unsigned long)(flush_now - last_flush),
+        printf("[LVGL] stack HW=%lu words, freeHeap=%lu\r\n",
                (unsigned long)hw,
                (unsigned long)xPortGetFreeHeapSize());
-        last_flush = flush_now;
       }
-
       last_log = now;
     }
 
-    osDelay(LV_DEF_REFR_PERIOD + 1);
+    //    /* 周期延时（关键性能参数）*/
+    osDelay(LV_DEF_REFR_PERIOD + 1); // 保持屏幕刷新率稳定（典型值30ms≈33FPS）
+
+    // 注意：
+    // 1. 延时过短：导致刷新不全（屏幕闪烁）
+    // 2. 延时过长：界面响应迟滞
+    // 3. LV_DISP_DEF_REFR_PERIOD应与屏显参数匹配（在lv_conf.h中配置）
+
+    // 调试语句（使用时需注意串口输出可能影响实时性）
+    // printf("GUI task heartbeat\r\n");
   }
   /* USER CODE END LVGL_Task */
 }
@@ -488,6 +474,55 @@ void LED_Task(void *argument)
 void Main_Task(void *argument)
 {
   /* USER CODE BEGIN Main_Task */
+  SD_DacWaveInfo_t wave_info;
+  uint8_t stream_enabled = 0u;
+
+  memset(&wave_info, 0, sizeof(wave_info));
+
+  /* NOTE: FatFs SD driver (FATFS/Target/sd_diskio.c) gates SD_initialize() on
+   * osKernelRunning(), so SD mount/sync must happen after scheduler start. */
+  if (SD_Wave_SyncDacToQspi(DAC_WAVE_SD_PATH, &wave_info)) {
+    printf("[DAC WAVE] sync from SD ok\r\n");
+    if (DAC8568_DMA_UseQspiWave(wave_info.qspi_mmap_addr,
+                                wave_info.sample_count,
+                                wave_info.sample_rate_hz) == 0) {
+      printf("[DAC WAVE] source=QSPI sps=%lu count=%lu addr=0x%08lX\r\n",
+             (unsigned long)wave_info.sample_rate_hz,
+             (unsigned long)wave_info.sample_count,
+             (unsigned long)wave_info.qspi_mmap_addr);
+      stream_enabled = 1u;
+    } else {
+      printf("[DAC WAVE] source switch failed after SD sync\r\n");
+    }
+  }
+#if (DAC_WAVE_REQUIRE_SD_SYNC == 0)
+  else if (SD_Wave_LoadDacInfoFromQspi(&wave_info)) {
+    printf("[DAC WAVE] load from QSPI ok\r\n");
+    if (DAC8568_DMA_UseQspiWave(wave_info.qspi_mmap_addr,
+                                wave_info.sample_count,
+                                wave_info.sample_rate_hz) == 0) {
+      printf("[DAC WAVE] source=QSPI sps=%lu count=%lu addr=0x%08lX\r\n",
+             (unsigned long)wave_info.sample_rate_hz,
+             (unsigned long)wave_info.sample_count,
+             (unsigned long)wave_info.qspi_mmap_addr);
+      stream_enabled = 1u;
+    } else {
+      printf("[DAC WAVE] source switch failed, no output\r\n");
+    }
+  }
+#endif
+  else {
+    printf("[DAC WAVE] SD sync failed: %s\r\n", DAC_WAVE_SD_PATH);
+  }
+
+  if (stream_enabled != 0u) {
+    DAC8568_DMA_Start();
+    printf("[DAC] start sps=%lu\r\n", (unsigned long)DAC_SAMPLE_RATE_HZ);
+  } else {
+    DAC8568_OutputFixedVoltage(0.0f);
+    printf("[DAC] stream disabled (no waveform output)\r\n");
+  }
+
   TickType_t last_log = xTaskGetTickCount();
   /* Infinite loop */
   for(;;)
