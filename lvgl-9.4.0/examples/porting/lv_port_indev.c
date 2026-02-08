@@ -1,152 +1,203 @@
 /**
  * @file lv_port_indev.c
- *
  */
 
-/*Copy this file as "lv_port_indev.c" and set this value to "1" to enable content*/
+/* Copy this file as "lv_port_indev.c" and set this value to "1" to enable content */
 #if 1
 
 /*********************
  * INCLUDES
  *********************/
 #include "lv_port_indev.h"
-#include "touch_800x480.h" /* 引入你的触摸屏驱动头文件 */
+#include "main.h"
+#include "stm32h7xx_hal.h"
+#include <stdbool.h>
+#include <stdint.h>
 
 /*********************
  * DEFINES
  *********************/
-#ifndef EW_TOUCH_SCROLL_LIMIT
-/* 滑动判定距离（像素）：越小越“灵敏”，越大越不易误触发滑动 */
-#define EW_TOUCH_SCROLL_LIMIT 10
-#endif
-
-#ifndef EW_TOUCH_SCROLL_THROW
-/* 滑动松手后的惯性衰减（百分比）：越大停止越快，越小惯性越强 */
-#define EW_TOUCH_SCROLL_THROW 25
-#endif
-
-#ifndef EW_TOUCH_LONG_PRESS_MS
-/* 长按判定时间（ms）：适当调小可让按键反馈更快（不影响普通点击的抬起触发） */
-#define EW_TOUCH_LONG_PRESS_MS 350
-#endif
-
-#ifndef EW_TOUCH_LONG_PRESS_REPEAT_MS
-#define EW_TOUCH_LONG_PRESS_REPEAT_MS 120
-#endif
+#define KEY_EVENT_DEBOUNCE_MS 30U
+#define KEY_COUNT 4U
 
 /**********************
  * TYPEDEFS
  **********************/
+typedef struct
+{
+    GPIO_TypeDef *gpio_port;
+    uint16_t gpio_pin;
+    uint32_t lv_key;
+} key_map_t;
 
 /**********************
  * STATIC PROTOTYPES
  **********************/
-
-static void touchpad_init(void);
-static void touchpad_read(lv_indev_t * indev, lv_indev_data_t * data);
-static bool touchpad_is_pressed(void);
-static void touchpad_get_xy(int32_t * x, int32_t * y);
+static void keypad_read(lv_indev_t *indev, lv_indev_data_t *data);
+static void pop_key_event(uint32_t *idx_out, bool *valid_out);
+static void key_latch_refresh(void);
 
 /**********************
  * STATIC VARIABLES
  **********************/
-lv_indev_t * indev_touchpad;
+static lv_indev_t *indev_keypad = NULL;
+static lv_group_t *indev_group = NULL;
 
-/**********************
- * MACROS
- **********************/
+static volatile uint32_t s_key_pending_mask = 0U;
+static volatile uint32_t s_key_latched_mask = 0U;
+static volatile uint32_t s_key_last_tick[KEY_COUNT] = {0U, 0U, 0U, 0U};
+
+static const key_map_t s_key_map[KEY_COUNT] = {
+    {KEY1_GPIO_Port, KEY1_Pin, LV_KEY_PREV},
+    {KEY2_GPIO_Port, KEY2_Pin, LV_KEY_NEXT},
+    {KEY3_GPIO_Port, KEY3_Pin, LV_KEY_ENTER},
+    {KEY4_GPIO_Port, KEY4_Pin, LV_KEY_ESC},
+};
 
 /**********************
  * GLOBAL FUNCTIONS
  **********************/
-
 void lv_port_indev_init(void)
 {
-    /*------------------
-     * Touchpad
-     * -----------------*/
+    uint32_t i;
 
-    /* 初始化触摸屏硬件 */
-    touchpad_init();
+    s_key_pending_mask = 0U;
+    s_key_latched_mask = 0U;
+    for (i = 0U; i < KEY_COUNT; i++)
+    {
+        s_key_last_tick[i] = 0U;
+    }
 
-    /* 注册触摸输入设备 */
-    indev_touchpad = lv_indev_create();
-    lv_indev_set_type(indev_touchpad, LV_INDEV_TYPE_POINTER);
-    lv_indev_set_read_cb(indev_touchpad, touchpad_read);
+    indev_keypad = lv_indev_create();
+    lv_indev_set_type(indev_keypad, LV_INDEV_TYPE_KEYPAD);
+    lv_indev_set_read_cb(indev_keypad, keypad_read);
 
-    /* ！！！新增代码：设置触摸防抖/滑动阈值 ！！！ */
-    /* 根据主界面“滑动不灵敏/点击迟钝”的体验，降低滑动门槛并加快惯性衰减 */
-    lv_indev_set_scroll_limit(indev_touchpad, EW_TOUCH_SCROLL_LIMIT);
-    lv_indev_set_scroll_throw(indev_touchpad, EW_TOUCH_SCROLL_THROW);
-    lv_indev_set_long_press_time(indev_touchpad, EW_TOUCH_LONG_PRESS_MS);
-    lv_indev_set_long_press_repeat_time(indev_touchpad, EW_TOUCH_LONG_PRESS_REPEAT_MS);
+    indev_group = lv_group_create();
+    lv_group_set_default(indev_group);
+    lv_group_set_wrap(indev_group, true);
+    lv_indev_set_group(indev_keypad, indev_group);
+}
+
+void lv_port_indev_set_group(lv_group_t *group)
+{
+    if ((indev_keypad == NULL) || (group == NULL))
+    {
+        return;
+    }
+
+    lv_indev_set_group(indev_keypad, group);
+}
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+    uint32_t i;
+    uint32_t now = HAL_GetTick();
+
+    for (i = 0U; i < KEY_COUNT; i++)
+    {
+        if (GPIO_Pin == s_key_map[i].gpio_pin)
+        {
+            uint32_t elapsed = now - s_key_last_tick[i];
+            uint32_t key_bit = (1UL << i);
+
+            if (((s_key_latched_mask & key_bit) == 0U) &&
+                (elapsed >= KEY_EVENT_DEBOUNCE_MS) &&
+                (HAL_GPIO_ReadPin(s_key_map[i].gpio_port, s_key_map[i].gpio_pin) == GPIO_PIN_RESET))
+            {
+                s_key_last_tick[i] = now;
+                s_key_pending_mask |= key_bit;
+                s_key_latched_mask |= key_bit;
+            }
+            break;
+        }
+    }
 }
 
 /**********************
  * STATIC FUNCTIONS
  **********************/
-
-/*------------------
- * Touchpad
- * -----------------*/
-
-/* 初始化你的触摸屏 */
-static void touchpad_init(void)
+static void keypad_read(lv_indev_t *indev, lv_indev_data_t *data)
 {
-    /* 调用底层驱动的初始化函数 */
-    Touch_Init(); 
-}
+    static uint32_t last_key = LV_KEY_ENTER;
+    static bool need_release = false;
+    uint32_t event_idx = 0U;
+    bool has_event = false;
 
-/* LVGL 库会定期调用此函数来读取触摸状态 */
-static void touchpad_read(lv_indev_t * indev_drv, lv_indev_data_t * data)
-{
-    /* ！！！关键修改！！！ */
-    /* 必须在此处调用底层的扫描函数，否则 touchInfo 不会更新 */
-    Touch_Scan(); 
-    /* */
+    (void)indev;
 
-    static int32_t last_x = 0;
-    static int32_t last_y = 0;
+    key_latch_refresh();
 
-    /* 保存按下时的坐标和状态 */
-    if(touchpad_is_pressed()) {
-        touchpad_get_xy(&last_x, &last_y);
-        data->state = LV_INDEV_STATE_PRESSED;
+    if (need_release)
+    {
+        data->state = LV_INDEV_STATE_RELEASED;
+        data->key = last_key;
+        need_release = false;
+        return;
     }
-    else {
+
+    pop_key_event(&event_idx, &has_event);
+
+    if (has_event)
+    {
+        last_key = s_key_map[event_idx].lv_key;
+        data->key = last_key;
+        data->state = LV_INDEV_STATE_PRESSED;
+        need_release = true;
+    }
+    else
+    {
+        data->key = last_key;
         data->state = LV_INDEV_STATE_RELEASED;
     }
-
-    /* 设置最后的坐标 */
-    data->point.x = last_x;
-    data->point.y = last_y;
 }
 
-/* 返回 true 如果触摸屏被按下 */
-static bool touchpad_is_pressed(void)
+static void pop_key_event(uint32_t *idx_out, bool *valid_out)
 {
-    /* 使用驱动中的全局变量 touchInfo 判断按下状态 */
-    /* 注意：Touch_Scan() 会更新 touchInfo.flag */
-    if(touchInfo.flag == 1) 
+    uint32_t i;
+    uint32_t pending;
+    bool found = false;
+
+    __disable_irq();
+    pending = s_key_pending_mask;
+    if (pending != 0U)
     {
-        return true;
-    } 
-    else 
-    {
-        return false;
+        for (i = 0U; i < KEY_COUNT; i++)
+        {
+            if ((pending & (1UL << i)) != 0U)
+            {
+                s_key_pending_mask &= ~(1UL << i);
+                *idx_out = i;
+                found = true;
+                break;
+            }
+        }
     }
+    __enable_irq();
+
+    *valid_out = found;
 }
 
-/* 如果触摸屏被按下，获取 X 和 Y 坐标 */
-static void touchpad_get_xy(int32_t * x, int32_t * y)
+static void key_latch_refresh(void)
 {
-    /* 将硬件读取到的 uint16_t 坐标赋值给 LVGL 的 int32_t 坐标 */
-    (*x) = (int32_t)touchInfo.x[0];
-    (*y) = (int32_t)touchInfo.y[0];
+    uint32_t i;
+
+    __disable_irq();
+    for (i = 0U; i < KEY_COUNT; i++)
+    {
+        uint32_t key_bit = (1UL << i);
+        if ((s_key_latched_mask & key_bit) != 0U)
+        {
+            if (HAL_GPIO_ReadPin(s_key_map[i].gpio_port, s_key_map[i].gpio_pin) == GPIO_PIN_SET)
+            {
+                s_key_latched_mask &= ~key_bit;
+            }
+        }
+    }
+    __enable_irq();
 }
 
-#else /*Enable this file at the top*/
+#else /* Enable this file at the top */
 
-/*This dummy typedef exists purely to silence -Wpedantic.*/
+/* This dummy typedef exists purely to silence -Wpedantic. */
 typedef int keep_pedantic_happy;
 #endif

@@ -11,8 +11,8 @@ extern "C" {
 #endif
 
 #include "fonts/ew_fonts.h"
-#define EW_SCREEN_WIDTH     800
-#define EW_SCREEN_HEIGHT    480
+#define EW_SCREEN_WIDTH     320
+#define EW_SCREEN_HEIGHT    240
 
 #ifdef __cplusplus
 }

@@ -34,7 +34,6 @@
 // Demo 已移除，使用自定义 EdgeWind UI
 #include "EdgeWind_UI/edgewind_ui.h"
 #include "DAC8568/dac8568_dma.h"
-#include "dac_wave_sync.h"
 #include <stdio.h>
 
 /* USER CODE END Includes */
@@ -489,28 +488,6 @@ void LED_Task(void *argument)
 void Main_Task(void *argument)
 {
   /* USER CODE BEGIN Main_Task */
-  DAC_WaveInfo_t wave = {0};
-  bool wave_ok = DAC_Wave_SyncFromSDToW25Q("0:/wave/dac8568_wave.bin", &wave);
-  if (!wave_ok) {
-    printf("[DAC WAVE] SD sync failed: 0:/wave/dac8568_wave.bin\r\n");
-    printf("[DAC] stream disabled (no waveform output)\r\n");
-  } else {
-    if (wave.sample_rate != 0u) {
-      DAC8568_DMA_Init(wave.sample_rate);
-    }
-    if (wave.format == DAC_WAVE_FORMAT_CODE16x4) {
-      DAC8568_DMA_SetWaveCodes16((const uint16_t *)wave.qspi_mm_addr, wave.sample_count);
-    } else {
-      DAC8568_DMA_SetWaveFrames((const uint32_t *)wave.qspi_mm_addr, wave.sample_count);
-    }
-    printf("[DAC WAVE] source=QSPI sps=%lu count=%lu addr=0x%08lX\r\n",
-           (unsigned long)wave.sample_rate,
-           (unsigned long)wave.sample_count,
-           (unsigned long)wave.qspi_mm_addr);
-    DAC8568_DMA_Start();
-    printf("[DAC] start sps=%lu\r\n", (unsigned long)wave.sample_rate);
-  }
-
   TickType_t last_log = xTaskGetTickCount();
   /* Infinite loop */
   for(;;)

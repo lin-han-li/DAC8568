@@ -13,9 +13,6 @@ LR_IROM1 0x08000000 0x00020000  {    ; 2MB Flash
    *(.axi_sram)
    *(.axi_sram*)
   }
-  RW_D2SRAM 0x30000000 0x00040000  {  ; D2 SRAM (for DAC8568 DMA ring buffer)
-   *(.ram_d2*)
-  }
   RW_IRAM1 0x20000000 0x00020000  {  ; DTCM RAM
    .ANY (+RW +ZI)
   }

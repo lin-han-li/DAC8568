@@ -62,6 +62,8 @@ void Error_Handler(void);
 #define ESP8266_RX_GPIO_Port GPIOD
 #define ESP8266_TX_Pin GPIO_PIN_6
 #define ESP8266_TX_GPIO_Port GPIOD
+#define DC_Pin GPIO_PIN_12
+#define DC_GPIO_Port GPIOG
 #define DAC8568_CLR_Pin GPIO_PIN_9
 #define DAC8568_CLR_GPIO_Port GPIOB
 #define DAC8568_LDAC_Pin GPIO_PIN_6
@@ -70,6 +72,8 @@ void Error_Handler(void);
 #define DAC8568_DIN_GPIO_Port GPIOA
 #define DAC85_CLK_Pin GPIO_PIN_5
 #define DAC85_CLK_GPIO_Port GPIOA
+#define BG_Pin GPIO_PIN_6
+#define BG_GPIO_Port GPIOH
 #define DAC8568_SYNC_Pin GPIO_PIN_4
 #define DAC8568_SYNC_GPIO_Port GPIOA
 
@@ -82,19 +86,6 @@ void Error_Handler(void);
 #define KEY3_GPIO_Port GPIOB
 #define KEY4_Pin GPIO_PIN_15
 #define KEY4_GPIO_Port GPIOB
-
-#ifndef DAC_SAMPLE_RATE_HZ
-#define DAC_SAMPLE_RATE_HZ 240000u
-#endif
-
-#ifndef DAC_WAVE_SD_PATH
-#define DAC_WAVE_SD_PATH "0:/wave/dac8568_wave.bin"
-#endif
-
-/* 1: 必须 SD 同步成功才启动 DAC 波形流；0: 允许从 QSPI 直接加载已同步的波形或回退 */
-#ifndef DAC_WAVE_REQUIRE_SD_SYNC
-#define DAC_WAVE_REQUIRE_SD_SYNC 1
-#endif
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

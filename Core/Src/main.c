@@ -180,7 +180,8 @@ int main(void)
 
   /* DAC8568 streaming output test (SPI1+DMA paced by TIM12 TRGO). */
   DAC8568_DMA_Init(DAC_SAMPLE_RATE_HZ);
-  printf("[DAC] init ok, waiting SD sync in RTOS\r\n");
+  DAC8568_DMA_Start();
+  printf("[DAC] start sps=%lu\r\n", (unsigned long)DAC_SAMPLE_RATE_HZ);
   printf("[DAC] tim12 psc=%lu arr=%lu\r\n",
          (unsigned long)htim12.Instance->PSC,
          (unsigned long)htim12.Instance->ARR);

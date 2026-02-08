@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file scr_boot_anim.c
  * @brief CRT 风格开机动画实现
  * 
@@ -341,12 +341,16 @@ static void corner_opa_anim_cb(void *var, int32_t v)
 
 static void create_grid_lines(void)
 {
-    /* 完整40px网格背景 - HTML效果 */
-    /* 横向网格线 - 800 / 40 = 20 条 */
-    for (int i = 0; i < 20; i++) {
+    const int32_t step = (SCREEN_W <= 240) ? 32 : 40;
+    const int32_t h_cap = (int32_t)(sizeof(ew_boot_anim.grid_lines_h) / sizeof(ew_boot_anim.grid_lines_h[0]));
+    const int32_t v_cap = (int32_t)(sizeof(ew_boot_anim.grid_lines_v) / sizeof(ew_boot_anim.grid_lines_v[0]));
+    const int32_t h_count = (((SCREEN_H + step - 1) / step) < h_cap) ? ((SCREEN_H + step - 1) / step) : h_cap;
+    const int32_t v_count = (((SCREEN_W + step - 1) / step) < v_cap) ? ((SCREEN_W + step - 1) / step) : v_cap;
+
+    for (int32_t i = 0; i < h_count; i++) {
         ew_boot_anim.grid_lines_h[i] = lv_obj_create(ew_boot_anim.screen);
         lv_obj_set_size(ew_boot_anim.grid_lines_h[i], SCREEN_W, 1);
-        lv_obj_set_pos(ew_boot_anim.grid_lines_h[i], 0, i * 40);
+        lv_obj_set_pos(ew_boot_anim.grid_lines_h[i], 0, i * step);
         lv_obj_set_style_bg_color(ew_boot_anim.grid_lines_h[i], lv_color_white(), 0);
         lv_obj_set_style_bg_opa(ew_boot_anim.grid_lines_h[i], 8, 0); /* 3% 透明度 */
         lv_obj_set_style_border_width(ew_boot_anim.grid_lines_h[i], 0, 0);
@@ -354,12 +358,15 @@ static void create_grid_lines(void)
         lv_obj_set_style_opa(ew_boot_anim.grid_lines_h[i], LV_OPA_TRANSP, 0); /* 初始隐藏 */
         lv_obj_clear_flag(ew_boot_anim.grid_lines_h[i], LV_OBJ_FLAG_SCROLLABLE);
     }
-    
-    /* 纵向网格线 - 480 / 40 = 12 条 */
-    for (int i = 0; i < 12; i++) {
+
+    for (int32_t i = h_count; i < h_cap; i++) {
+        ew_boot_anim.grid_lines_h[i] = NULL;
+    }
+
+    for (int32_t i = 0; i < v_count; i++) {
         ew_boot_anim.grid_lines_v[i] = lv_obj_create(ew_boot_anim.screen);
         lv_obj_set_size(ew_boot_anim.grid_lines_v[i], 1, SCREEN_H);
-        lv_obj_set_pos(ew_boot_anim.grid_lines_v[i], i * 40, 0);
+        lv_obj_set_pos(ew_boot_anim.grid_lines_v[i], i * step, 0);
         lv_obj_set_style_bg_color(ew_boot_anim.grid_lines_v[i], lv_color_white(), 0);
         lv_obj_set_style_bg_opa(ew_boot_anim.grid_lines_v[i], 8, 0); /* 3% 透明度 */
         lv_obj_set_style_border_width(ew_boot_anim.grid_lines_v[i], 0, 0);
@@ -367,9 +374,12 @@ static void create_grid_lines(void)
         lv_obj_set_style_opa(ew_boot_anim.grid_lines_v[i], LV_OPA_TRANSP, 0); /* 初始隐藏 */
         lv_obj_clear_flag(ew_boot_anim.grid_lines_v[i], LV_OBJ_FLAG_SCROLLABLE);
     }
-    
-    /* 网格淡入动画 - 与四角同步，32条线同时淡入 */
-    for (int i = 0; i < 20; i++) {
+
+    for (int32_t i = v_count; i < v_cap; i++) {
+        ew_boot_anim.grid_lines_v[i] = NULL;
+    }
+
+    for (int32_t i = 0; i < h_count; i++) {
         lv_anim_t a;
         lv_anim_init(&a);
         lv_anim_set_var(&a, ew_boot_anim.grid_lines_h[i]);
@@ -380,8 +390,8 @@ static void create_grid_lines(void)
         lv_anim_set_exec_cb(&a, corner_opa_anim_cb);
         lv_anim_start(&a);
     }
-    
-    for (int i = 0; i < 12; i++) {
+
+    for (int32_t i = 0; i < v_count; i++) {
         lv_anim_t a;
         lv_anim_init(&a);
         lv_anim_set_var(&a, ew_boot_anim.grid_lines_v[i]);
@@ -468,16 +478,18 @@ static void scanline_timer_cb(lv_timer_t *timer)
 
 static void create_terminal(void)
 {
+    const bool compact = (SCREEN_W <= 240);
+
     ew_boot_anim.terminal_label = lv_label_create(ew_boot_anim.screen);
     lv_label_set_text(ew_boot_anim.terminal_label, "");
-    lv_obj_set_style_text_font(ew_boot_anim.terminal_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(ew_boot_anim.terminal_label, compact ? &lv_font_montserrat_12 : &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(ew_boot_anim.terminal_label, BOOT_COLOR_GREEN, 0);
-    lv_obj_set_style_text_line_space(ew_boot_anim.terminal_label, 4, 0);
-    lv_obj_set_pos(ew_boot_anim.terminal_label, 40, SCREEN_H - 180);
+    lv_obj_set_style_text_line_space(ew_boot_anim.terminal_label, compact ? 2 : 4, 0);
+    lv_obj_set_pos(ew_boot_anim.terminal_label, compact ? 10 : 40, compact ? (SCREEN_H - 120) : (SCREEN_H - 180));
     lv_obj_set_style_opa(ew_boot_anim.terminal_label, LV_OPA_TRANSP, 0);
     
     /* 文字发光效果 */
-    lv_obj_set_style_shadow_width(ew_boot_anim.terminal_label, 5, 0);
+    lv_obj_set_style_shadow_width(ew_boot_anim.terminal_label, compact ? 3 : 5, 0);
     lv_obj_set_style_shadow_color(ew_boot_anim.terminal_label, BOOT_COLOR_GREEN, 0);
     lv_obj_set_style_shadow_opa(ew_boot_anim.terminal_label, LV_OPA_50, 0);
     
@@ -542,10 +554,14 @@ static void log_timer_cb(lv_timer_t *timer)
 
 static void create_scan_overlay(void)
 {
+    const bool compact = (SCREEN_W <= 240);
+    const int32_t band_w = compact ? 20 : 30;
+    const int32_t band_h = compact ? 100 : 150;
+
     /* 创建扫描光带 - 初始在Logo左侧外 */
     ew_boot_anim.scan_overlay = lv_obj_create(ew_boot_anim.screen);
-    lv_obj_set_size(ew_boot_anim.scan_overlay, 30, 150);  /* 光带宽度30px，高度覆盖Logo */
-    lv_obj_set_pos(ew_boot_anim.scan_overlay, -50, (SCREEN_H - 150) / 2);  /* 初始在屏幕左侧外 */
+    lv_obj_set_size(ew_boot_anim.scan_overlay, band_w, band_h);  /* 光带宽度，高度覆盖Logo */
+    lv_obj_set_pos(ew_boot_anim.scan_overlay, -band_w - 10, (SCREEN_H - band_h) / 2);  /* 初始在屏幕左侧外 */
     
     /* 霓虹青色光带 - 对齐HTML #00fff2 */
     lv_obj_set_style_bg_color(ew_boot_anim.scan_overlay, BOOT_COLOR_CYAN, 0);
@@ -556,7 +572,7 @@ static void create_scan_overlay(void)
     lv_obj_set_style_radius(ew_boot_anim.scan_overlay, 2, 0);
     
     /* 发光效果 */
-    lv_obj_set_style_shadow_width(ew_boot_anim.scan_overlay, 40, 0);
+    lv_obj_set_style_shadow_width(ew_boot_anim.scan_overlay, compact ? 20 : 40, 0);
     lv_obj_set_style_shadow_color(ew_boot_anim.scan_overlay, BOOT_COLOR_CYAN, 0);
     lv_obj_set_style_shadow_opa(ew_boot_anim.scan_overlay, LV_OPA_80, 0);
     
@@ -575,10 +591,26 @@ static void scan_overlay_anim_cb(void *var, int32_t v)
 
 static void create_logo_area(void)
 {
+    const bool compact = (SCREEN_W <= 240);
+    const int32_t logo_w = compact ? (SCREEN_W - 20) : 300;
+    const int32_t logo_h = compact ? 130 : 200;
+    const int32_t logo_y = compact ? -22 : -50;
+    const int32_t icon_w = compact ? 96 : 150;
+    const int32_t icon_h = compact ? 72 : 110;
+    const int32_t line_w = compact ? 4 : 7;
+    const int32_t line_shadow = compact ? 8 : 15;
+    const int32_t title_space = compact ? 1 : 4;
+    const int32_t title_shadow = compact ? 14 : 35;
+    const int32_t progress_w = compact ? (SCREEN_W - 40) : 200;
+    const int32_t progress_y = compact ? 38 : 50;
+    const int32_t btn_w = compact ? (SCREEN_W - 60) : 180;
+    const int32_t btn_h = compact ? 36 : 50;
+    const int32_t btn_y = compact ? -24 : -60;
+
     /* Logo 容器 */
     ew_boot_anim.logo_container = lv_obj_create(ew_boot_anim.screen);
-    lv_obj_set_size(ew_boot_anim.logo_container, 300, 200);
-    lv_obj_align(ew_boot_anim.logo_container, LV_ALIGN_CENTER, 0, -50); /* 上移50px为按钮留空间 */
+    lv_obj_set_size(ew_boot_anim.logo_container, logo_w, logo_h);
+    lv_obj_align(ew_boot_anim.logo_container, LV_ALIGN_CENTER, 0, logo_y); /* 为按钮留空间 */
     /* 完全清除所有可见样式 */
     lv_obj_set_style_bg_opa(ew_boot_anim.logo_container, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(ew_boot_anim.logo_container, 0, 0);
@@ -589,7 +621,7 @@ static void create_logo_area(void)
     lv_obj_set_style_opa(ew_boot_anim.logo_container, LV_OPA_TRANSP, 0);
     lv_obj_set_flex_flow(ew_boot_anim.logo_container, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(ew_boot_anim.logo_container, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_row(ew_boot_anim.logo_container, 8, 0);
+    lv_obj_set_style_pad_row(ew_boot_anim.logo_container, compact ? 4 : 8, 0);
     lv_obj_set_style_pad_all(ew_boot_anim.logo_container, 0, 0);
     
     /* 设置缩放中心点 */
@@ -599,7 +631,7 @@ static void create_logo_area(void)
     /* 风力图标 - 用 lv_line 绘制 SVG 路径 (放大1.5倍) */
     /* 创建旋转容器用于动画 */
     ew_boot_anim.icon_rotate_container = lv_obj_create(ew_boot_anim.logo_container);
-    lv_obj_set_size(ew_boot_anim.icon_rotate_container, 150, 110); /* 放大: 100x80 -> 150x110 */
+    lv_obj_set_size(ew_boot_anim.icon_rotate_container, icon_w, icon_h);
     /* 完全清除所有可见样式 - 修复边框显示问题 */
     lv_obj_set_style_bg_opa(ew_boot_anim.icon_rotate_container, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(ew_boot_anim.icon_rotate_container, 0, 0);
@@ -620,10 +652,10 @@ static void create_logo_area(void)
     };
     ew_boot_anim.logo_icon_line1 = lv_line_create(icon_container);
     lv_line_set_points(ew_boot_anim.logo_icon_line1, blade1, 4);
-    lv_obj_set_style_line_width(ew_boot_anim.logo_icon_line1, 7, 0);  /* 放大: 5 -> 7 */
+    lv_obj_set_style_line_width(ew_boot_anim.logo_icon_line1, line_w, 0);
     lv_obj_set_style_line_color(ew_boot_anim.logo_icon_line1, BOOT_COLOR_BLUE, 0);
     lv_obj_set_style_line_rounded(ew_boot_anim.logo_icon_line1, true, 0);
-    lv_obj_set_style_shadow_width(ew_boot_anim.logo_icon_line1, 15, 0);  /* 放大: 8 -> 15 */
+    lv_obj_set_style_shadow_width(ew_boot_anim.logo_icon_line1, line_shadow, 0);
     lv_obj_set_style_shadow_color(ew_boot_anim.logo_icon_line1, BOOT_COLOR_BLUE, 0);
     lv_obj_align(ew_boot_anim.logo_icon_line1, LV_ALIGN_CENTER, 0, 0);
     
@@ -633,10 +665,10 @@ static void create_logo_area(void)
     };
     ew_boot_anim.logo_icon_line2 = lv_line_create(icon_container);
     lv_line_set_points(ew_boot_anim.logo_icon_line2, blade2, 4);
-    lv_obj_set_style_line_width(ew_boot_anim.logo_icon_line2, 7, 0);  /* 放大: 5 -> 7 */
+    lv_obj_set_style_line_width(ew_boot_anim.logo_icon_line2, line_w, 0);
     lv_obj_set_style_line_color(ew_boot_anim.logo_icon_line2, BOOT_COLOR_BLUE, 0);
     lv_obj_set_style_line_rounded(ew_boot_anim.logo_icon_line2, true, 0);
-    lv_obj_set_style_shadow_width(ew_boot_anim.logo_icon_line2, 15, 0);  /* 放大: 8 -> 15 */
+    lv_obj_set_style_shadow_width(ew_boot_anim.logo_icon_line2, line_shadow, 0);
     lv_obj_set_style_shadow_color(ew_boot_anim.logo_icon_line2, BOOT_COLOR_BLUE, 0);
     lv_obj_align(ew_boot_anim.logo_icon_line2, LV_ALIGN_CENTER, 0, 0);
     
@@ -646,10 +678,10 @@ static void create_logo_area(void)
     };
     ew_boot_anim.logo_icon_line3 = lv_line_create(icon_container);
     lv_line_set_points(ew_boot_anim.logo_icon_line3, wave, 6);
-    lv_obj_set_style_line_width(ew_boot_anim.logo_icon_line3, 7, 0);  /* 放大: 5 -> 7 */
+    lv_obj_set_style_line_width(ew_boot_anim.logo_icon_line3, line_w, 0);
     lv_obj_set_style_line_color(ew_boot_anim.logo_icon_line3, BOOT_COLOR_BLUE, 0);
     lv_obj_set_style_line_rounded(ew_boot_anim.logo_icon_line3, true, 0);
-    lv_obj_set_style_shadow_width(ew_boot_anim.logo_icon_line3, 15, 0);  /* 放大: 8 -> 15 */
+    lv_obj_set_style_shadow_width(ew_boot_anim.logo_icon_line3, line_shadow, 0);
     lv_obj_set_style_shadow_color(ew_boot_anim.logo_icon_line3, BOOT_COLOR_BLUE, 0);
     lv_obj_align(ew_boot_anim.logo_icon_line3, LV_ALIGN_CENTER, 0, 0);
     
@@ -668,51 +700,51 @@ static void create_logo_area(void)
     /* 红色偏移层（底层） - 放大字号 */
     ew_boot_anim.logo_text_red = lv_label_create(text_container);
     lv_label_set_text(ew_boot_anim.logo_text_red, "EDGEWIND");
-    lv_obj_set_style_text_font(ew_boot_anim.logo_text_red, &lv_font_montserrat_40, 0); /* 放大: 32 -> 40 */
+    lv_obj_set_style_text_font(ew_boot_anim.logo_text_red, compact ? &lv_font_montserrat_24 : &lv_font_montserrat_40, 0);
     lv_obj_set_style_text_color(ew_boot_anim.logo_text_red, BOOT_COLOR_RED, 0);
-    lv_obj_set_style_text_letter_space(ew_boot_anim.logo_text_red, 4, 0); /* 放大: 2 -> 4 */
+    lv_obj_set_style_text_letter_space(ew_boot_anim.logo_text_red, title_space, 0);
     lv_obj_set_style_opa(ew_boot_anim.logo_text_red, LV_OPA_TRANSP, 0); /* 初始隐藏 */
     lv_obj_set_pos(ew_boot_anim.logo_text_red, 0, 0);
     
     /* 蓝色偏移层（中层） - 放大字号 */
     ew_boot_anim.logo_text_blue = lv_label_create(text_container);
     lv_label_set_text(ew_boot_anim.logo_text_blue, "EDGEWIND");
-    lv_obj_set_style_text_font(ew_boot_anim.logo_text_blue, &lv_font_montserrat_40, 0); /* 放大: 32 -> 40 */
+    lv_obj_set_style_text_font(ew_boot_anim.logo_text_blue, compact ? &lv_font_montserrat_24 : &lv_font_montserrat_40, 0);
     lv_obj_set_style_text_color(ew_boot_anim.logo_text_blue, BOOT_COLOR_BLUE, 0);
-    lv_obj_set_style_text_letter_space(ew_boot_anim.logo_text_blue, 4, 0); /* 放大: 2 -> 4 */
+    lv_obj_set_style_text_letter_space(ew_boot_anim.logo_text_blue, title_space, 0);
     lv_obj_set_style_opa(ew_boot_anim.logo_text_blue, LV_OPA_TRANSP, 0); /* 初始隐藏 */
     lv_obj_set_pos(ew_boot_anim.logo_text_blue, 0, 0);
     
     /* 白色主文字（顶层） - 放大字号 + 增强霓虹灯阴影 */
     ew_boot_anim.logo_text = lv_label_create(text_container);
     lv_label_set_text(ew_boot_anim.logo_text, "EDGEWIND");
-    lv_obj_set_style_text_font(ew_boot_anim.logo_text, &lv_font_montserrat_40, 0); /* 放大: 32 -> 40 */
+    lv_obj_set_style_text_font(ew_boot_anim.logo_text, compact ? &lv_font_montserrat_24 : &lv_font_montserrat_40, 0);
     lv_obj_set_style_text_color(ew_boot_anim.logo_text, BOOT_COLOR_WHITE, 0);
-    lv_obj_set_style_text_letter_space(ew_boot_anim.logo_text, 4, 0); /* 放大: 2 -> 4 */
+    lv_obj_set_style_text_letter_space(ew_boot_anim.logo_text, title_space, 0);
     lv_obj_set_pos(ew_boot_anim.logo_text, 0, 0);
     /* 强烈的蓝色霓虹发光阴影 - 增强 */
-    lv_obj_set_style_shadow_width(ew_boot_anim.logo_text, 35, 0); /* 放大: 25 -> 35 */
+    lv_obj_set_style_shadow_width(ew_boot_anim.logo_text, title_shadow, 0);
     lv_obj_set_style_shadow_color(ew_boot_anim.logo_text, BOOT_COLOR_BLUE, 0);
     lv_obj_set_style_shadow_opa(ew_boot_anim.logo_text, LV_OPA_90, 0); /* 增强: 80 -> 90 */
     lv_obj_set_style_shadow_offset_x(ew_boot_anim.logo_text, 0, 0);
     lv_obj_set_style_shadow_offset_y(ew_boot_anim.logo_text, 0, 0);
-    lv_obj_set_style_shadow_spread(ew_boot_anim.logo_text, 5, 0); /* 放大: 3 -> 5 */
+    lv_obj_set_style_shadow_spread(ew_boot_anim.logo_text, compact ? 2 : 5, 0);
     
     /* SYSTEM V2.0 副标题 - 对齐HTML */
     ew_boot_anim.logo_sub = lv_label_create(ew_boot_anim.logo_container);
     lv_label_set_text(ew_boot_anim.logo_sub, "SYSTEM V2.0");
-    lv_obj_set_style_text_font(ew_boot_anim.logo_sub, &lv_font_montserrat_14, 0); /* 放大: 12 -> 14 */
+    lv_obj_set_style_text_font(ew_boot_anim.logo_sub, compact ? &lv_font_montserrat_10 : &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(ew_boot_anim.logo_sub, BOOT_COLOR_BLUE, 0);
-    lv_obj_set_style_text_letter_space(ew_boot_anim.logo_sub, 8, 0); /* 放大: 6 -> 8 */
+    lv_obj_set_style_text_letter_space(ew_boot_anim.logo_sub, compact ? 2 : 8, 0);
     /* 副标题也添加发光 - 增强 */
-    lv_obj_set_style_shadow_width(ew_boot_anim.logo_sub, 18, 0); /* 放大: 12 -> 18 */
+    lv_obj_set_style_shadow_width(ew_boot_anim.logo_sub, compact ? 8 : 18, 0);
     lv_obj_set_style_shadow_color(ew_boot_anim.logo_sub, BOOT_COLOR_BLUE, 0);
     lv_obj_set_style_shadow_opa(ew_boot_anim.logo_sub, LV_OPA_60, 0);
     
     /* 进度条 - 独立于logo_container，直接挂在screen上 */
     ew_boot_anim.progress_bar = lv_bar_create(ew_boot_anim.screen);
-    lv_obj_set_size(ew_boot_anim.progress_bar, 200, 4);
-    lv_obj_align(ew_boot_anim.progress_bar, LV_ALIGN_CENTER, 0, 50); /* Logo下方50px */
+    lv_obj_set_size(ew_boot_anim.progress_bar, progress_w, 4);
+    lv_obj_align(ew_boot_anim.progress_bar, LV_ALIGN_CENTER, 0, progress_y);
     lv_bar_set_range(ew_boot_anim.progress_bar, 0, 100);
     lv_bar_set_value(ew_boot_anim.progress_bar, 0, LV_ANIM_OFF);
     lv_obj_set_style_bg_color(ew_boot_anim.progress_bar, lv_color_hex(0x222222), LV_PART_MAIN);
@@ -721,7 +753,7 @@ static void create_logo_area(void)
     lv_obj_set_style_bg_color(ew_boot_anim.progress_bar, BOOT_COLOR_BLUE, LV_PART_INDICATOR);
     lv_obj_set_style_bg_opa(ew_boot_anim.progress_bar, LV_OPA_COVER, LV_PART_INDICATOR);
     lv_obj_set_style_radius(ew_boot_anim.progress_bar, 2, LV_PART_INDICATOR);
-    lv_obj_set_style_shadow_width(ew_boot_anim.progress_bar, 8, LV_PART_INDICATOR);
+    lv_obj_set_style_shadow_width(ew_boot_anim.progress_bar, compact ? 4 : 8, LV_PART_INDICATOR);
     lv_obj_set_style_shadow_color(ew_boot_anim.progress_bar, BOOT_COLOR_BLUE, LV_PART_INDICATOR);
     /* 初始隐藏进度条，等 Glitch 结束后再显示 */
     lv_obj_set_style_opa(ew_boot_anim.progress_bar, LV_OPA_TRANSP, 0);
@@ -730,15 +762,15 @@ static void create_logo_area(void)
     
     /* 进入系统按钮 - 初始隐藏 */
     ew_boot_anim.enter_btn = lv_btn_create(ew_boot_anim.screen);
-    lv_obj_set_size(ew_boot_anim.enter_btn, 180, 50);
-    lv_obj_align(ew_boot_anim.enter_btn, LV_ALIGN_BOTTOM_MID, 0, -60);
+    lv_obj_set_size(ew_boot_anim.enter_btn, btn_w, btn_h);
+    lv_obj_align(ew_boot_anim.enter_btn, LV_ALIGN_BOTTOM_MID, 0, btn_y);
     /* 科技风格样式 */
     lv_obj_set_style_bg_color(ew_boot_anim.enter_btn, lv_color_hex(0x1E1E24), 0);
     lv_obj_set_style_bg_opa(ew_boot_anim.enter_btn, LV_OPA_90, 0);
     lv_obj_set_style_border_width(ew_boot_anim.enter_btn, 2, 0);
     lv_obj_set_style_border_color(ew_boot_anim.enter_btn, BOOT_COLOR_BLUE, 0);
     lv_obj_set_style_radius(ew_boot_anim.enter_btn, 8, 0);
-    lv_obj_set_style_shadow_width(ew_boot_anim.enter_btn, 20, 0);
+    lv_obj_set_style_shadow_width(ew_boot_anim.enter_btn, compact ? 10 : 20, 0);
     lv_obj_set_style_shadow_color(ew_boot_anim.enter_btn, BOOT_COLOR_BLUE, 0);
     lv_obj_set_style_shadow_opa(ew_boot_anim.enter_btn, LV_OPA_60, 0);
     /* 按下效果 */
@@ -747,10 +779,9 @@ static void create_logo_area(void)
     lv_obj_set_style_transform_scale(ew_boot_anim.enter_btn, 240, LV_STATE_PRESSED); /* 95% */
     /* 按钮文字 */
     ew_boot_anim.enter_btn_label = lv_label_create(ew_boot_anim.enter_btn);
-    lv_label_set_text(ew_boot_anim.enter_btn_label, "进 入 系 统");
+    lv_label_set_text(ew_boot_anim.enter_btn_label, compact ? "ENTER" : "进 入 系 统");
     lv_obj_center(ew_boot_anim.enter_btn_label);
-    /* 中文必须使用思源宋体字库，否则会显示方块 */
-    lv_obj_set_style_text_font(ew_boot_anim.enter_btn_label, EW_FONT_CN_NORMAL, 0);
+    lv_obj_set_style_text_font(ew_boot_anim.enter_btn_label, compact ? &lv_font_montserrat_14 : EW_FONT_CN_NORMAL, 0);
     lv_obj_set_style_text_color(ew_boot_anim.enter_btn_label, BOOT_COLOR_WHITE, 0);
     /* 初始隐藏 */
     lv_obj_set_style_opa(ew_boot_anim.enter_btn, LV_OPA_TRANSP, 0);
@@ -760,6 +791,8 @@ static void create_logo_area(void)
 
 static void start_logo_phase(void)
 {
+    const int32_t scan_pad = (SCREEN_W <= 240) ? 30 : 50;
+
     /* 隐藏终端日志 - 对齐HTML: 500ms淡出 */
     lv_anim_t hide_term;
     lv_anim_init(&hide_term);
@@ -794,7 +827,7 @@ static void start_logo_phase(void)
     lv_anim_t scan_move;
     lv_anim_init(&scan_move);
     lv_anim_set_var(&scan_move, ew_boot_anim.scan_overlay);
-    lv_anim_set_values(&scan_move, -50, SCREEN_W + 50);  /* 从屏幕左外到右外 */
+    lv_anim_set_values(&scan_move, -scan_pad, SCREEN_W + scan_pad);  /* 从屏幕左外到右外 */
     lv_anim_set_time(&scan_move, 1500);
     lv_anim_set_delay(&scan_move, 100);
     lv_anim_set_path_cb(&scan_move, lv_anim_path_ease_in_out);
@@ -946,5 +979,13 @@ static void start_zoomout_phase(void)
     
     /* 绑定按钮点击事件 */
     lv_obj_add_event_cb(ew_boot_anim.enter_btn, enter_btn_click_cb, LV_EVENT_CLICKED, NULL);
+
+    {
+        lv_group_t *g = lv_group_get_default();
+        if (g) {
+            lv_group_add_obj(g, ew_boot_anim.enter_btn);
+            lv_group_focus_obj(ew_boot_anim.enter_btn);
+        }
+    }
 }
 
