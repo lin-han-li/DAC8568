@@ -50,6 +50,12 @@ void edgewind_ui_on_enter_system(void);
 void edgewind_ui_on_before_enter_button(void);
 
 /**
+ * @brief 是否允许显示“进入系统”按钮（弱符号）
+ * @return true 允许显示；false 暂不显示（例如后台同步未完成）
+ */
+bool edgewind_ui_can_show_enter_button(void);
+
+/**
  * @brief 设置主界面 Footer 日志（跨任务可调用，不触碰 LVGL）
  * @note 业务层可在任意任务调用；LVGL 线程会在下一次刷新时取出并更新界面
  */

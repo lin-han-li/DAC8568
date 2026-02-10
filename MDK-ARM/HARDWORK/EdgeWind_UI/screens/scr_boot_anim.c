@@ -23,6 +23,8 @@
  ******************************************************************************/
 
 ew_boot_anim_t ew_boot_anim = {0};
+static lv_timer_t *s_enter_btn_wait_timer = NULL;
+static bool s_enter_btn_visible = false;
 
 /*******************************************************************************
  * 内部常量
@@ -87,6 +89,8 @@ static void progress_anim_cb(void *var, int32_t v);
 static void start_zoomout_phase(void);
 static void zoomout_start_cb(lv_anim_t *a);
 static void enter_btn_click_cb(lv_event_t *e);
+static void show_enter_button_now(void);
+static void enter_btn_wait_timer_cb(lv_timer_t *timer);
 
 /*******************************************************************************
  * 公共函数实现
@@ -94,6 +98,12 @@ static void enter_btn_click_cb(lv_event_t *e);
 
 void ew_boot_anim_create(void)
 {
+    if (s_enter_btn_wait_timer) {
+        lv_timer_del(s_enter_btn_wait_timer);
+        s_enter_btn_wait_timer = NULL;
+    }
+    s_enter_btn_visible = false;
+
     /* 创建屏幕 */
     ew_boot_anim.screen = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(ew_boot_anim.screen, BOOT_COLOR_BG, 0);
@@ -950,9 +960,52 @@ static void enter_btn_click_cb(lv_event_t *e)
     edgewind_ui_on_enter_system();
 }
 
+static void show_enter_button_now(void)
+{
+    if (s_enter_btn_visible) {
+        return;
+    }
+    s_enter_btn_visible = true;
+
+    if (s_enter_btn_wait_timer) {
+        lv_timer_del(s_enter_btn_wait_timer);
+        s_enter_btn_wait_timer = NULL;
+    }
+
+    /* 显示进入系统按钮 - 淡入动画 */
+    lv_anim_t show_btn;
+    lv_anim_init(&show_btn);
+    lv_anim_set_var(&show_btn, ew_boot_anim.enter_btn);
+    lv_anim_set_values(&show_btn, 0, 255);
+    lv_anim_set_time(&show_btn, 500);
+    lv_anim_set_delay(&show_btn, 200);
+    lv_anim_set_path_cb(&show_btn, lv_anim_path_ease_out);
+    lv_anim_set_exec_cb(&show_btn, corner_opa_anim_cb);
+    lv_anim_start(&show_btn);
+
+    lv_obj_remove_event_cb(ew_boot_anim.enter_btn, enter_btn_click_cb);
+    lv_obj_add_event_cb(ew_boot_anim.enter_btn, enter_btn_click_cb, LV_EVENT_CLICKED, NULL);
+
+    {
+        lv_group_t *g = lv_group_get_default();
+        if (g) {
+            lv_group_add_obj(g, ew_boot_anim.enter_btn);
+            lv_group_focus_obj(ew_boot_anim.enter_btn);
+        }
+    }
+}
+
+static void enter_btn_wait_timer_cb(lv_timer_t *timer)
+{
+    LV_UNUSED(timer);
+    if (edgewind_ui_can_show_enter_button()) {
+        show_enter_button_now();
+    }
+}
+
 static void start_zoomout_phase(void)
 {
-    /* 不再执行淡出动画，改为显示"进入系统"按钮 */
+    /* 不再执行淡出动画，改为“同步就绪后显示进入系统按钮” */
 
     /* ⚠️需求：加载完开机动画但还没有弹出“进入系统”按钮时，若需要断电重连则先触发自动连接上报 */
     edgewind_ui_on_before_enter_button();
@@ -966,26 +1019,14 @@ static void start_zoomout_phase(void)
     lv_anim_set_exec_cb(&hide_progress, corner_opa_anim_cb);
     lv_anim_start(&hide_progress);
     
-    /* 显示进入系统按钮 - 淡入动画 */
-    lv_anim_t show_btn;
-    lv_anim_init(&show_btn);
-    lv_anim_set_var(&show_btn, ew_boot_anim.enter_btn);
-    lv_anim_set_values(&show_btn, 0, 255);
-    lv_anim_set_time(&show_btn, 500);
-    lv_anim_set_delay(&show_btn, 200);
-    lv_anim_set_path_cb(&show_btn, lv_anim_path_ease_out);
-    lv_anim_set_exec_cb(&show_btn, corner_opa_anim_cb);
-    lv_anim_start(&show_btn);
-    
-    /* 绑定按钮点击事件 */
-    lv_obj_add_event_cb(ew_boot_anim.enter_btn, enter_btn_click_cb, LV_EVENT_CLICKED, NULL);
-
-    {
-        lv_group_t *g = lv_group_get_default();
-        if (g) {
-            lv_group_add_obj(g, ew_boot_anim.enter_btn);
-            lv_group_focus_obj(ew_boot_anim.enter_btn);
+    if (edgewind_ui_can_show_enter_button()) {
+        show_enter_button_now();
+    } else {
+        if (s_enter_btn_wait_timer == NULL) {
+            s_enter_btn_wait_timer = lv_timer_create(enter_btn_wait_timer_cb, 100, NULL);
+        } else {
+            lv_timer_set_period(s_enter_btn_wait_timer, 100);
+            lv_timer_resume(s_enter_btn_wait_timer);
         }
     }
 }
-

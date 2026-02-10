@@ -35,6 +35,11 @@ EW_WEAK void edgewind_ui_on_before_enter_button(void)
 {
 }
 
+EW_WEAK bool edgewind_ui_can_show_enter_button(void)
+{
+    return true;
+}
+
 /*******************************************************************************
  * 公共函数实现
  ******************************************************************************/

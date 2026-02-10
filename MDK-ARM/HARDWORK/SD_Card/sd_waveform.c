@@ -292,6 +292,10 @@ bool SD_Wave_SyncDacToQspiPartition(const char *sd_path, SD_DacWavePartition_t p
 	}
 	memset(info, 0, sizeof(*info));
 	partition_base = SD_Wave_GetPartitionBaseOffset(partition);
+	printf("[WAVE] sync start: part=%s(%lu) path=%s\r\n",
+	       SD_Wave_GetPartitionName(partition),
+	       (unsigned long)partition,
+	       sd_path);
 
 	sd_res = SD_Init();
 	if (sd_res != FR_OK) {
@@ -316,6 +320,8 @@ bool SD_Wave_SyncDacToQspiPartition(const char *sd_path, SD_DacWavePartition_t p
 	flash_total = hdr.data_offset + hdr.data_bytes;
 	erase_end = partition_base + ((flash_total + (SD_DAC_WAVE_ERASE_UNIT - 1u)) & ~(SD_DAC_WAVE_ERASE_UNIT - 1u));
 
+	/* Ensure QSPI is not left in memory-mapped mode from previous partition. */
+	(void)QSPI_W25Qxx_ExitMemoryMapped();
 	if (QSPI_W25Qxx_Init() != QSPI_W25Qxx_OK) {
 		(void)f_close(&fil);
 		printf("[WAVE] QSPI init failed\r\n");
@@ -415,6 +421,7 @@ bool SD_Wave_LoadDacInfoFromQspiPartition(SD_DacWavePartition_t partition, SD_Da
 	memset(info, 0, sizeof(*info));
 	partition_base = SD_Wave_GetPartitionBaseOffset(partition);
 
+	(void)QSPI_W25Qxx_ExitMemoryMapped();
 	if (QSPI_W25Qxx_Init() != QSPI_W25Qxx_OK) {
 		return false;
 	}

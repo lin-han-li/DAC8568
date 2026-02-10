@@ -67,6 +67,12 @@
 #define DAC8568_STAGNANT_LIMIT 3u
 #define DAC8568_QSPI_MMAP_BASE 0x90000000u
 #define DAC8568_QSPI_MMAP_LIMIT 0x92000000u
+/*
+ * Keep a conservative tail guard when reading from memory-mapped QSPI.
+ * The last fault partition (IGBT) sits at the top of the flash address space,
+ * and tiny guards can still hit bus/cached prefetch corner cases near 0x92000000.
+ */
+#define DAC8568_QSPI_GUARD_BYTES (64u * 1024u)
 
 #define DAC8568_RECOVER_REASON_NONE 0u
 #define DAC8568_RECOVER_REASON_SPI_ERROR 1u
@@ -110,9 +116,21 @@ static uint32_t g_service_last_samples = 0u;
 static uint32_t g_service_last_fail = 0u;
 static uint32_t g_last_ref_refresh_tick = 0u;
 static volatile DAC8568_SourceMode_t g_source_mode = DAC8568_SOURCE_LUT;
-static const uint16_t *g_qspi_wave_data = NULL;
-static uint32_t g_qspi_wave_samples = 0u;
-static uint32_t g_qspi_wave_index = 0u;
+static const uint16_t *g_qspi_wave_data[DAC8568_QSPI_SOURCE_MAX] = {0};
+static uint32_t g_qspi_wave_samples[DAC8568_QSPI_SOURCE_MAX] = {0};
+static uint32_t g_qspi_wave_index[DAC8568_QSPI_SOURCE_MAX] = {0};
+static volatile uint8_t g_qspi_active_source = 0u;
+
+typedef struct {
+  volatile uint8_t pending;
+  uint8_t source_id;
+  uint8_t reset_index;
+  uint8_t reserved;
+  const uint16_t *data;
+  uint32_t samples;
+} dac8568_qspi_switch_t;
+
+static dac8568_qspi_switch_t g_qspi_switch = {0};
 
 static uint32_t dac8568_get_tx_sample_counter(void) {
   /* Derived from DMA progress for sub-buffer resolution (avoids 8191-sample quantization). */
@@ -309,21 +327,72 @@ static void dac8568_dcache_clean(void *addr, size_t bytes) {
   SCB_CleanDCache_by_Addr((uint32_t *)start, (int32_t)(end - start));
 }
 
+static uint32_t dac8568_qspi_safe_samples(uint32_t qspi_mmap_addr, uint32_t requested_samples) {
+  const uint32_t bytes_per_sample = DAC8568_WORDS_PER_SAMPLE * (uint32_t)sizeof(uint16_t);
+
+  if ((qspi_mmap_addr < DAC8568_QSPI_MMAP_BASE) || (qspi_mmap_addr >= DAC8568_QSPI_MMAP_LIMIT)) {
+    return 0u;
+  }
+
+  uint32_t max_bytes = DAC8568_QSPI_MMAP_LIMIT - qspi_mmap_addr;
+  if (max_bytes <= DAC8568_QSPI_GUARD_BYTES) {
+    return 0u;
+  }
+  max_bytes -= DAC8568_QSPI_GUARD_BYTES;
+
+  uint32_t max_samples = max_bytes / bytes_per_sample;
+  if (max_samples == 0u) {
+    return 0u;
+  }
+
+  if (requested_samples > max_samples) {
+    return max_samples;
+  }
+  return requested_samples;
+}
+
 static void dac8568_fill_samples(uint32_t *dst, uint32_t sample_count) {
   uint32_t *dst_base = dst;
   uint32_t phase_a = g_phase_a;
   uint32_t phase_b = g_phase_b;
   uint32_t phase_c = g_phase_c;
   uint32_t phase_d = g_phase_d;
-  uint32_t qspi_index = g_qspi_wave_index;
+  uint8_t active_source = g_qspi_active_source;
+  uint32_t qspi_index = 0u;
+
+  if (g_qspi_switch.pending != 0u) {
+    uint8_t new_source = g_qspi_switch.source_id;
+    const uint16_t *new_data = g_qspi_switch.data;
+    uint32_t new_samples = g_qspi_switch.samples;
+    uint8_t reset_idx = g_qspi_switch.reset_index;
+    g_qspi_switch.pending = 0u;
+
+    if (new_source < DAC8568_QSPI_SOURCE_MAX && new_data != NULL && new_samples > 0u) {
+      g_qspi_wave_data[new_source] = new_data;
+      g_qspi_wave_samples[new_source] = new_samples;
+      if (reset_idx != 0u) {
+        g_qspi_wave_index[new_source] = 0u;
+      }
+      g_qspi_active_source = new_source;
+      active_source = new_source;
+    }
+  }
 
   const uint32_t inc_a = g_phase_inc_a;
   const uint32_t inc_b = g_phase_inc_b;
   const uint32_t inc_c = g_phase_inc_c;
   const uint32_t inc_d = g_phase_inc_d;
   const uint8_t use_qspi = (g_source_mode == DAC8568_SOURCE_QSPI) &&
-                           (g_qspi_wave_data != NULL) &&
-                           (g_qspi_wave_samples > 0u);
+                           (active_source < DAC8568_QSPI_SOURCE_MAX) &&
+                           (g_qspi_wave_data[active_source] != NULL) &&
+                           (g_qspi_wave_samples[active_source] > 0u);
+
+  if (use_qspi != 0u) {
+    qspi_index = g_qspi_wave_index[active_source];
+    if (qspi_index >= g_qspi_wave_samples[active_source]) {
+      qspi_index = 0u;
+    }
+  }
 
   for (uint32_t i = 0u; i < sample_count; i++) {
     uint16_t code_a;
@@ -332,13 +401,13 @@ static void dac8568_fill_samples(uint32_t *dst, uint32_t sample_count) {
     uint16_t code_d;
 
     if (use_qspi != 0u) {
-      const uint16_t *sample = &g_qspi_wave_data[qspi_index * DAC8568_WORDS_PER_SAMPLE];
+      const uint16_t *sample = &g_qspi_wave_data[active_source][qspi_index * DAC8568_WORDS_PER_SAMPLE];
       code_a = sample[0];
       code_b = sample[1];
       code_c = sample[2];
       code_d = sample[3];
       qspi_index++;
-      if (qspi_index >= g_qspi_wave_samples) {
+      if (qspi_index >= g_qspi_wave_samples[active_source]) {
         qspi_index = 0u;
       }
     } else {
@@ -359,7 +428,20 @@ static void dac8568_fill_samples(uint32_t *dst, uint32_t sample_count) {
   }
 
   if (use_qspi != 0u) {
-    g_qspi_wave_index = qspi_index;
+    g_qspi_wave_index[active_source] = qspi_index;
+
+    /* Baseline phase should continue even during fault playback. */
+    if (active_source != 0u &&
+        g_qspi_wave_data[0] != NULL &&
+        g_qspi_wave_samples[0] > 0u &&
+        sample_count > 0u) {
+      uint32_t base_index = g_qspi_wave_index[0];
+      base_index += sample_count;
+      if (base_index >= g_qspi_wave_samples[0]) {
+        base_index %= g_qspi_wave_samples[0];
+      }
+      g_qspi_wave_index[0] = base_index;
+    }
   } else {
     g_phase_a = phase_a;
     g_phase_b = phase_b;
@@ -391,7 +473,13 @@ static void dac8568_dma_on_full(void) {
 void DAC8568_DMA_Init(uint32_t sample_rate_hz) {
   g_sample_rate_hz = (sample_rate_hz == 0u) ? 48000u : sample_rate_hz;
   g_phase_a = g_phase_b = g_phase_c = g_phase_d = 0u;
-  g_qspi_wave_index = 0u;
+  for (uint32_t i = 0u; i < DAC8568_QSPI_SOURCE_MAX; i++) {
+    g_qspi_wave_data[i] = NULL;
+    g_qspi_wave_samples[i] = 0u;
+    g_qspi_wave_index[i] = 0u;
+  }
+  g_qspi_active_source = 0u;
+  g_qspi_switch.pending = 0u;
   dac8568_update_phase_inc(g_sample_rate_hz);
 
   /*
@@ -425,7 +513,6 @@ void DAC8568_DMA_Start(void) {
   g_tick_skip = 0u;
   g_tick_count = 0u;
   g_sample_count = 0u;
-  g_qspi_wave_index = 0u;
 
   /* Prefill both halves before starting the circular DMA stream. */
   dac8568_fill_samples(&g_tx_buf[0], DAC8568_SAMPLES_PER_HALF);
@@ -592,12 +679,17 @@ void DAC8568_DMA_GetHealth(uint32_t *recover_count, uint32_t *recover_reason,
 int32_t DAC8568_DMA_UseQspiWave(uint32_t qspi_mmap_addr, uint32_t sample_count,
                                 uint32_t sample_rate_hz) {
   uint8_t restart_stream = 0u;
+  uint32_t safe_samples = 0u;
 
   if ((qspi_mmap_addr < DAC8568_QSPI_MMAP_BASE) || (qspi_mmap_addr >= DAC8568_QSPI_MMAP_LIMIT)) {
     return -1;
   }
   if (sample_count == 0u) {
     return -2;
+  }
+  safe_samples = dac8568_qspi_safe_samples(qspi_mmap_addr, sample_count);
+  if (safe_samples == 0u) {
+    return -4;
   }
 
   if (g_stream_running != 0u) {
@@ -607,9 +699,10 @@ int32_t DAC8568_DMA_UseQspiWave(uint32_t qspi_mmap_addr, uint32_t sample_count,
     (void)HAL_SPI_Abort(&hspi1);
   }
 
-  g_qspi_wave_data = (const uint16_t *)(uintptr_t)qspi_mmap_addr;
-  g_qspi_wave_samples = sample_count;
-  g_qspi_wave_index = 0u;
+  g_qspi_wave_data[0] = (const uint16_t *)(uintptr_t)qspi_mmap_addr;
+  g_qspi_wave_samples[0] = safe_samples;
+  g_qspi_wave_index[0] = 0u;
+  g_qspi_active_source = 0u;
   g_source_mode = DAC8568_SOURCE_QSPI;
 
   if (sample_rate_hz != 0u) {
@@ -623,6 +716,57 @@ int32_t DAC8568_DMA_UseQspiWave(uint32_t qspi_mmap_addr, uint32_t sample_count,
   return 0;
 }
 
+int32_t DAC8568_DMA_RequestQspiWave(uint8_t source_id, uint32_t qspi_mmap_addr,
+                                   uint32_t sample_count, bool reset_index) {
+  uint32_t safe_samples = 0u;
+
+  if ((qspi_mmap_addr < DAC8568_QSPI_MMAP_BASE) || (qspi_mmap_addr >= DAC8568_QSPI_MMAP_LIMIT)) {
+    return -1;
+  }
+  if (sample_count == 0u) {
+    return -2;
+  }
+  if (source_id >= DAC8568_QSPI_SOURCE_MAX) {
+    return -3;
+  }
+  safe_samples = dac8568_qspi_safe_samples(qspi_mmap_addr, sample_count);
+  if (safe_samples == 0u) {
+    return -4;
+  }
+
+  const uint16_t *data = (const uint16_t *)(uintptr_t)qspi_mmap_addr;
+
+  /* If stream isn't running, apply immediately (safe, no IRQ racing). */
+  if (g_stream_running == 0u) {
+    g_qspi_wave_data[source_id] = data;
+    g_qspi_wave_samples[source_id] = safe_samples;
+    if (reset_index) {
+      g_qspi_wave_index[source_id] = 0u;
+    }
+    g_qspi_active_source = source_id;
+    g_source_mode = DAC8568_SOURCE_QSPI;
+    return 0;
+  }
+
+  /* Defer switch to next half/full refill boundary to avoid glitches. */
+  uint32_t primask = __get_PRIMASK();
+  __disable_irq();
+  g_qspi_switch.source_id = source_id;
+  g_qspi_switch.data = data;
+  g_qspi_switch.samples = safe_samples;
+  g_qspi_switch.reset_index = reset_index ? 1u : 0u;
+  g_qspi_switch.pending = 1u;
+  if (primask == 0u) {
+    __enable_irq();
+  }
+  g_source_mode = DAC8568_SOURCE_QSPI;
+  return 0;
+}
+
+uint8_t DAC8568_DMA_GetActiveQspiSource(void) {
+  return g_qspi_active_source;
+}
+
 void DAC8568_DMA_UseBuiltInWave(void) {
   uint8_t restart_stream = 0u;
 
@@ -634,9 +778,13 @@ void DAC8568_DMA_UseBuiltInWave(void) {
   }
 
   g_source_mode = DAC8568_SOURCE_LUT;
-  g_qspi_wave_data = NULL;
-  g_qspi_wave_samples = 0u;
-  g_qspi_wave_index = 0u;
+  for (uint32_t i = 0u; i < DAC8568_QSPI_SOURCE_MAX; i++) {
+    g_qspi_wave_data[i] = NULL;
+    g_qspi_wave_samples[i] = 0u;
+    g_qspi_wave_index[i] = 0u;
+  }
+  g_qspi_active_source = 0u;
+  g_qspi_switch.pending = 0u;
 
   if (restart_stream != 0u) {
     DAC8568_DMA_Start();

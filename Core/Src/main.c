@@ -62,18 +62,6 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
-#ifndef DAC_SAMPLE_RATE_HZ
-#define DAC_SAMPLE_RATE_HZ 240000u
-#endif
-
-#ifndef DAC_WAVE_SD_PATH
-#define DAC_WAVE_SD_PATH "0:/wave/dac8568_wave.bin"
-#endif
-
-#ifndef DAC_WAVE_REQUIRE_SD_SYNC
-#define DAC_WAVE_REQUIRE_SD_SYNC 1
-#endif
-
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/

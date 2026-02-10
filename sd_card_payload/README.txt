@@ -1,10 +1,23 @@
-Copy the folder "wave" to SD card root.
+Copy `sd_card_payload/copy_to_sd/wave/` to SD card root as `wave/`.
 
-Expected file path on target:
-0:/wave/dac8568_wave.bin
+Expected file paths on target:
+0:/wave/normal.bin
+0:/wave/ac_coupling.bin
+0:/wave/bus_ground.bin
+0:/wave/insulation.bin
+0:/wave/cap_aging.bin
+0:/wave/pwm_abnormal.bin
+0:/wave/igbt_fault.bin
 
-Boot behavior:
-1) Firmware tries SD -> QSPI sync from the file above.
-2) If sync succeeds, DAC switches to QSPI direct-read playback.
-3) If SD file is absent, firmware tries loading waveform header from QSPI.
-4) If both fail, firmware falls back to built-in LUT waveform.
+Generate test files:
+python tools/gen_dac_fault_suite.py --out-dir sd_card_payload/copy_to_sd/wave
+
+Boot behavior (RTOS started):
+1) Firmware syncs ALL 7 files from SD -> W25Q256 partitions (takes time).
+2) After baseline partition is ready, DAC switches to QSPI direct-read playback and loops forever.
+3) Fault trigger is pointer switching only (no SD read / no QSPI erase/write during trigger).
+4) If a fault partition isn't ready, UI disables trigger for that fault.
+
+Notes:
+- Baseline output requires SD sync by default (see `DAC_WAVE_REQUIRE_SD_SYNC` in `Core/Inc/main.h`).
+- If baseline isn't ready, firmware outputs no waveform (stream disabled).

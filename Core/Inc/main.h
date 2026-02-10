@@ -32,6 +32,7 @@ extern "C" {
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "cmsis_os.h"
+#include <stdbool.h>
 
 /* USER CODE END Includes */
 
@@ -54,6 +55,11 @@ extern osMutexId_t mutex_id;
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
+
+/* DAC fault burst control (implemented in Core/Src/freertos.c) */
+bool DAC_FaultBurst_Trigger(uint32_t fault_id_0_5, uint32_t duration_s);
+void DAC_FaultBurst_Stop(void);
+void DAC_FaultBurst_GetUiState(uint32_t *ready_mask, uint8_t *active_fault_id_0_5, uint32_t *remaining_s);
 
 /* USER CODE END EFP */
 
@@ -93,13 +99,45 @@ void Error_Handler(void);
 #define DAC_SAMPLE_RATE_HZ 240000u
 #endif
 
+#ifndef DAC_WAVE_SD_PATH_NORMAL
+#define DAC_WAVE_SD_PATH_NORMAL "0:/wave/normal.bin"
+#endif
+#ifndef DAC_WAVE_SD_PATH_AC_COUPLING
+#define DAC_WAVE_SD_PATH_AC_COUPLING "0:/wave/ac_coupling.bin"
+#endif
+#ifndef DAC_WAVE_SD_PATH_BUS_GROUND
+#define DAC_WAVE_SD_PATH_BUS_GROUND "0:/wave/bus_ground.bin"
+#endif
+#ifndef DAC_WAVE_SD_PATH_INSULATION
+#define DAC_WAVE_SD_PATH_INSULATION "0:/wave/insulation.bin"
+#endif
+#ifndef DAC_WAVE_SD_PATH_CAP_AGING
+#define DAC_WAVE_SD_PATH_CAP_AGING "0:/wave/cap_aging.bin"
+#endif
+#ifndef DAC_WAVE_SD_PATH_PWM_ABNORMAL
+#define DAC_WAVE_SD_PATH_PWM_ABNORMAL "0:/wave/pwm_abnormal.bin"
+#endif
+#ifndef DAC_WAVE_SD_PATH_IGBT_FAULT
+#define DAC_WAVE_SD_PATH_IGBT_FAULT "0:/wave/igbt_fault.bin"
+#endif
+
+/* Backward-compatible alias: baseline partition SD path */
 #ifndef DAC_WAVE_SD_PATH
-#define DAC_WAVE_SD_PATH "0:/wave/dac8568_wave.bin"
+#define DAC_WAVE_SD_PATH DAC_WAVE_SD_PATH_NORMAL
 #endif
 
 /* 1: 必须 SD 同步成功才启动 DAC 波形流；0: 允许从 QSPI 直接加载已同步的波形或回退 */
 #ifndef DAC_WAVE_REQUIRE_SD_SYNC
 #define DAC_WAVE_REQUIRE_SD_SYNC 1
+#endif
+
+/*
+ * Boot-time SD->W25Q256 full sync switch:
+ * 1: every boot sync all 7 partitions from SD.
+ * 0: skip SD sync on boot, only load existing wave metadata from QSPI.
+ */
+#ifndef DAC_WAVE_BOOT_FULL_SYNC
+#define DAC_WAVE_BOOT_FULL_SYNC 0
 #endif
 /* USER CODE END Private defines */
 
