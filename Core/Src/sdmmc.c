@@ -44,6 +44,10 @@ void MX_SDMMC1_SD_Init(void)
   hsd1.Init.BusWide = SDMMC_BUS_WIDE_4B;
   hsd1.Init.HardwareFlowControl = SDMMC_HARDWARE_FLOW_CONTROL_DISABLE;
   hsd1.Init.ClockDiv = 0;
+  if (HAL_SD_Init(&hsd1) != HAL_OK)
+  {
+    Error_Handler();
+  }
   /* USER CODE BEGIN SDMMC1_Init 2 */
   /* CubeMX 可能会重置 ClockDiv；这里在原生 USER CODE 区域内强制对齐 PN_TI_LVGL_SD 的稳定配置 */
   hsd1.Init.ClockDiv = 0;

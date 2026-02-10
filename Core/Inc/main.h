@@ -76,6 +76,8 @@ void Error_Handler(void);
 #define BG_GPIO_Port GPIOH
 #define DAC8568_SYNC_Pin GPIO_PIN_4
 #define DAC8568_SYNC_GPIO_Port GPIOA
+#define BEEF_Pin GPIO_PIN_7
+#define BEEF_GPIO_Port GPIOH
 
 /* USER CODE BEGIN Private defines */
 #define KEY1_Pin GPIO_PIN_12

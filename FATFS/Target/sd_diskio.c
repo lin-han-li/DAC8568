@@ -274,7 +274,7 @@ DRESULT SD_read(BYTE lun, BYTE *buff, DWORD sector, UINT count)
   }
 
 #if defined(ENABLE_SCRATCH_BUFFER)
-  if (!((uint32_t)buff & 0x3))
+  if (!((uint32_t)buff & 0x1F))
   {
 #endif
     /* Fast path cause destination buffer is correctly aligned */
@@ -437,7 +437,7 @@ DRESULT SD_write(BYTE lun, const BYTE *buff, DWORD sector, UINT count)
   }
 
 #if defined(ENABLE_SCRATCH_BUFFER)
-  if (!((uint32_t)buff & 0x3))
+  if (!((uint32_t)buff & 0x1F))
   {
 #endif
 #if (ENABLE_SD_DMA_CACHE_MAINTENANCE == 1)
@@ -491,6 +491,7 @@ DRESULT SD_write(BYTE lun, const BYTE *buff, DWORD sector, UINT count)
 #endif
   }
 #if defined(ENABLE_SCRATCH_BUFFER)
+  }
   else {
     /* Slow path, fetch each sector a part and memcpy to destination buffer */
     int i;
@@ -560,7 +561,6 @@ DRESULT SD_write(BYTE lun, const BYTE *buff, DWORD sector, UINT count)
         res = RES_OK;
     }
 
-  }
 #endif
 
   return res;
