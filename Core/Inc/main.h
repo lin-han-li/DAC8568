@@ -97,7 +97,7 @@ bool DAC_Wave_IsBootReady(void);
 #define KEY4_GPIO_Port GPIOB
 
 #ifndef DAC_SAMPLE_RATE_HZ
-#define DAC_SAMPLE_RATE_HZ 102400u
+#define DAC_SAMPLE_RATE_HZ 240000u
 #endif
 
 #ifndef DAC_WAVE_SD_PATH_NORMAL
