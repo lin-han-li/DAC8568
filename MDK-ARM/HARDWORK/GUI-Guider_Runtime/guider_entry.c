@@ -4,6 +4,7 @@
  */
 
 #include "../EdgeWind_UI/edgewind_ui.h"
+#include "main.h"
 #include "gui_assets.h"
 #include "src/generated/gui_guider.h"
 
@@ -13,6 +14,11 @@ static bool guider_initialized = false;
 
 void edgewind_ui_on_before_enter_button(void)
 {
+}
+
+bool edgewind_ui_can_show_enter_button(void)
+{
+    return DAC_Wave_IsBootReady();
 }
 
 void edgewind_ui_on_enter_system(void)

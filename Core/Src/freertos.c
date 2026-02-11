@@ -705,6 +705,13 @@ static bool dac_wave_partition_ready(uint8_t partition)
   return true;
 }
 
+bool DAC_Wave_IsBootReady(void)
+{
+  return (s_dac_wave_boot_sync_done != 0u) &&
+         (s_dac_stream_started != 0u) &&
+         dac_wave_partition_ready(0u);
+}
+
 static void dac_fault_post_command(uint8_t cmd_type, uint8_t fault_id_0_5, uint32_t duration_s)
 {
   uint32_t primask = __get_PRIMASK();

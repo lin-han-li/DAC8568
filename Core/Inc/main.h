@@ -60,6 +60,7 @@ void Error_Handler(void);
 bool DAC_FaultBurst_Trigger(uint32_t fault_id_0_5, uint32_t duration_s);
 void DAC_FaultBurst_Stop(void);
 void DAC_FaultBurst_GetUiState(uint32_t *ready_mask, uint8_t *active_fault_id_0_5, uint32_t *remaining_s);
+bool DAC_Wave_IsBootReady(void);
 
 /* USER CODE END EFP */
 

@@ -14,6 +14,7 @@
 #include "scr_boot_anim.h"
 #include "../edgewind_theme.h"
 #include "../edgewind_ui.h"
+#include "DAC8568/dac8568_dma.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,6 +26,8 @@
 ew_boot_anim_t ew_boot_anim = {0};
 static lv_timer_t *s_enter_btn_wait_timer = NULL;
 static bool s_enter_btn_visible = false;
+static lv_timer_t *s_recover_btn_poll_timer = NULL;
+static uint32_t s_recover_btn_start_count = 0u;
 
 /*******************************************************************************
  * 内部常量
@@ -89,8 +92,10 @@ static void progress_anim_cb(void *var, int32_t v);
 static void start_zoomout_phase(void);
 static void zoomout_start_cb(lv_anim_t *a);
 static void enter_btn_click_cb(lv_event_t *e);
+static void recover_btn_click_cb(lv_event_t *e);
 static void show_enter_button_now(void);
 static void enter_btn_wait_timer_cb(lv_timer_t *timer);
+static void recover_btn_poll_timer_cb(lv_timer_t *timer);
 
 /*******************************************************************************
  * 公共函数实现
@@ -102,7 +107,12 @@ void ew_boot_anim_create(void)
         lv_timer_del(s_enter_btn_wait_timer);
         s_enter_btn_wait_timer = NULL;
     }
+    if (s_recover_btn_poll_timer) {
+        lv_timer_del(s_recover_btn_poll_timer);
+        s_recover_btn_poll_timer = NULL;
+    }
     s_enter_btn_visible = false;
+    s_recover_btn_start_count = 0u;
 
     /* 创建屏幕 */
     ew_boot_anim.screen = lv_obj_create(NULL);
@@ -602,20 +612,20 @@ static void scan_overlay_anim_cb(void *var, int32_t v)
 static void create_logo_area(void)
 {
     const bool compact = (SCREEN_W <= 240);
-    const int32_t logo_w = compact ? (SCREEN_W - 20) : 300;
-    const int32_t logo_h = compact ? 130 : 200;
-    const int32_t logo_y = compact ? -22 : -50;
-    const int32_t icon_w = compact ? 96 : 150;
-    const int32_t icon_h = compact ? 72 : 110;
-    const int32_t line_w = compact ? 4 : 7;
-    const int32_t line_shadow = compact ? 8 : 15;
+    const int32_t logo_w = compact ? (SCREEN_W - 70) : 240;
+    const int32_t logo_h = compact ? 90 : 150;
+    const int32_t logo_y = compact ? -54 : -70;
+    const int32_t icon_w = compact ? 84 : 136;
+    const int32_t icon_h = compact ? 62 : 100;
+    const int32_t line_w = compact ? 3 : 6;
+    const int32_t line_shadow = compact ? 6 : 12;
     const int32_t title_space = compact ? 1 : 4;
     const int32_t title_shadow = compact ? 14 : 35;
-    const int32_t progress_w = compact ? (SCREEN_W - 40) : 200;
-    const int32_t progress_y = compact ? 38 : 50;
-    const int32_t btn_w = compact ? (SCREEN_W - 60) : 180;
-    const int32_t btn_h = compact ? 36 : 50;
-    const int32_t btn_y = compact ? -24 : -60;
+    const int32_t progress_w = compact ? (SCREEN_W - 104) : 170;
+    const int32_t progress_y = compact ? 12 : 30;
+    const int32_t btn_w = compact ? (SCREEN_W - 120) : 148;
+    const int32_t btn_h = compact ? 26 : 36;
+    const int32_t btn_y = compact ? -18 : -60;
 
     /* Logo 容器 */
     ew_boot_anim.logo_container = lv_obj_create(ew_boot_anim.screen);
@@ -770,6 +780,37 @@ static void create_logo_area(void)
     /* 确保进度条在最顶层显示 */
     lv_obj_move_foreground(ew_boot_anim.progress_bar);
     
+    /* DAC 恢复按钮 - 初始隐藏（位于“进入系统”上方） */
+    {
+        const int32_t recover_h = (btn_h * 8) / 10;
+        const int32_t recover_y = btn_y - btn_h - 10;
+        ew_boot_anim.recover_btn = lv_btn_create(ew_boot_anim.screen);
+        lv_obj_set_size(ew_boot_anim.recover_btn, btn_w, recover_h);
+        lv_obj_align(ew_boot_anim.recover_btn, LV_ALIGN_BOTTOM_MID, 0, recover_y);
+        /* 科技风格样式（与 enter_btn 保持一致） */
+        lv_obj_set_style_bg_color(ew_boot_anim.recover_btn, lv_color_hex(0x1E1E24), 0);
+        lv_obj_set_style_bg_opa(ew_boot_anim.recover_btn, LV_OPA_90, 0);
+        lv_obj_set_style_border_width(ew_boot_anim.recover_btn, 2, 0);
+        lv_obj_set_style_border_color(ew_boot_anim.recover_btn, BOOT_COLOR_CYAN, 0);
+        lv_obj_set_style_radius(ew_boot_anim.recover_btn, 8, 0);
+        lv_obj_set_style_shadow_width(ew_boot_anim.recover_btn, compact ? 8 : 16, 0);
+        lv_obj_set_style_shadow_color(ew_boot_anim.recover_btn, BOOT_COLOR_CYAN, 0);
+        lv_obj_set_style_shadow_opa(ew_boot_anim.recover_btn, LV_OPA_50, 0);
+        /* 按下效果 */
+        lv_obj_set_style_bg_color(ew_boot_anim.recover_btn, BOOT_COLOR_CYAN, LV_STATE_PRESSED);
+        lv_obj_set_style_bg_opa(ew_boot_anim.recover_btn, LV_OPA_30, LV_STATE_PRESSED);
+        lv_obj_set_style_transform_scale(ew_boot_anim.recover_btn, 240, LV_STATE_PRESSED); /* 95% */
+        /* 按钮文字 */
+        ew_boot_anim.recover_btn_label = lv_label_create(ew_boot_anim.recover_btn);
+        lv_label_set_text(ew_boot_anim.recover_btn_label, compact ? "RECOVER" : "DAC 恢 复");
+        lv_obj_center(ew_boot_anim.recover_btn_label);
+        lv_obj_set_style_text_font(ew_boot_anim.recover_btn_label, compact ? &lv_font_montserrat_12 : EW_FONT_CN_NORMAL, 0);
+        lv_obj_set_style_text_color(ew_boot_anim.recover_btn_label, BOOT_COLOR_WHITE, 0);
+        /* 初始隐藏 */
+        lv_obj_set_style_opa(ew_boot_anim.recover_btn, LV_OPA_TRANSP, 0);
+        lv_obj_move_foreground(ew_boot_anim.recover_btn);
+    }
+
     /* 进入系统按钮 - 初始隐藏 */
     ew_boot_anim.enter_btn = lv_btn_create(ew_boot_anim.screen);
     lv_obj_set_size(ew_boot_anim.enter_btn, btn_w, btn_h);
@@ -791,7 +832,7 @@ static void create_logo_area(void)
     ew_boot_anim.enter_btn_label = lv_label_create(ew_boot_anim.enter_btn);
     lv_label_set_text(ew_boot_anim.enter_btn_label, compact ? "ENTER" : "进 入 系 统");
     lv_obj_center(ew_boot_anim.enter_btn_label);
-    lv_obj_set_style_text_font(ew_boot_anim.enter_btn_label, compact ? &lv_font_montserrat_14 : EW_FONT_CN_NORMAL, 0);
+    lv_obj_set_style_text_font(ew_boot_anim.enter_btn_label, compact ? &lv_font_montserrat_12 : EW_FONT_CN_NORMAL, 0);
     lv_obj_set_style_text_color(ew_boot_anim.enter_btn_label, BOOT_COLOR_WHITE, 0);
     /* 初始隐藏 */
     lv_obj_set_style_opa(ew_boot_anim.enter_btn, LV_OPA_TRANSP, 0);
@@ -960,6 +1001,48 @@ static void enter_btn_click_cb(lv_event_t *e)
     edgewind_ui_on_enter_system();
 }
 
+static void recover_btn_click_cb(lv_event_t *e)
+{
+    lv_obj_t *btn = lv_event_get_target(e);
+
+    if (ew_boot_anim.recover_btn_label) {
+        lv_label_set_text(ew_boot_anim.recover_btn_label, "恢复中...");
+    }
+
+    s_recover_btn_start_count = DAC8568_DMA_GetManualRecoverCount();
+    DAC8568_DMA_RequestManualRecover();
+
+    lv_obj_add_state(btn, LV_STATE_DISABLED);
+
+    if (s_recover_btn_poll_timer) {
+        lv_timer_del(s_recover_btn_poll_timer);
+        s_recover_btn_poll_timer = NULL;
+    }
+    s_recover_btn_poll_timer = lv_timer_create(recover_btn_poll_timer_cb, 100, NULL);
+}
+
+static void recover_btn_poll_timer_cb(lv_timer_t *timer)
+{
+    LV_UNUSED(timer);
+
+    if (DAC8568_DMA_GetManualRecoverCount() == s_recover_btn_start_count) {
+        return;
+    }
+
+    if (s_recover_btn_poll_timer) {
+        lv_timer_del(s_recover_btn_poll_timer);
+        s_recover_btn_poll_timer = NULL;
+    }
+
+    if (ew_boot_anim.recover_btn) {
+        lv_obj_clear_state(ew_boot_anim.recover_btn, LV_STATE_DISABLED);
+    }
+    if (ew_boot_anim.recover_btn_label) {
+        const bool compact = (SCREEN_W <= 240);
+        lv_label_set_text(ew_boot_anim.recover_btn_label, compact ? "RECOVER" : "DAC 恢 复");
+    }
+}
+
 static void show_enter_button_now(void)
 {
     if (s_enter_btn_visible) {
@@ -970,6 +1053,28 @@ static void show_enter_button_now(void)
     if (s_enter_btn_wait_timer) {
         lv_timer_del(s_enter_btn_wait_timer);
         s_enter_btn_wait_timer = NULL;
+    }
+
+    /* 显示 DAC 恢复按钮 - 淡入动画 */
+    if (ew_boot_anim.recover_btn) {
+        lv_anim_t show_recover;
+        lv_anim_init(&show_recover);
+        lv_anim_set_var(&show_recover, ew_boot_anim.recover_btn);
+        lv_anim_set_values(&show_recover, 0, 255);
+        lv_anim_set_time(&show_recover, 400);
+        lv_anim_set_delay(&show_recover, 120);
+        lv_anim_set_path_cb(&show_recover, lv_anim_path_ease_out);
+        lv_anim_set_exec_cb(&show_recover, corner_opa_anim_cb);
+        lv_anim_start(&show_recover);
+
+        lv_obj_clear_state(ew_boot_anim.recover_btn, LV_STATE_DISABLED);
+        if (ew_boot_anim.recover_btn_label) {
+            const bool compact = (SCREEN_W <= 240);
+            lv_label_set_text(ew_boot_anim.recover_btn_label, compact ? "RECOVER" : "DAC 恢 复");
+        }
+
+        lv_obj_remove_event_cb(ew_boot_anim.recover_btn, recover_btn_click_cb);
+        lv_obj_add_event_cb(ew_boot_anim.recover_btn, recover_btn_click_cb, LV_EVENT_CLICKED, NULL);
     }
 
     /* 显示进入系统按钮 - 淡入动画 */
@@ -989,6 +1094,9 @@ static void show_enter_button_now(void)
     {
         lv_group_t *g = lv_group_get_default();
         if (g) {
+            if (ew_boot_anim.recover_btn) {
+                lv_group_add_obj(g, ew_boot_anim.recover_btn);
+            }
             lv_group_add_obj(g, ew_boot_anim.enter_btn);
             lv_group_focus_obj(ew_boot_anim.enter_btn);
         }

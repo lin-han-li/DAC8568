@@ -92,6 +92,10 @@ typedef struct {
     /* 进入系统按钮 */
     lv_obj_t *enter_btn;
     lv_obj_t *enter_btn_label;
+
+    /* DAC 手动恢复按钮（位于“进入系统”上方） */
+    lv_obj_t *recover_btn;
+    lv_obj_t *recover_btn_label;
     
     /* Glitch 特效 */
     lv_timer_t *glitch_timer;

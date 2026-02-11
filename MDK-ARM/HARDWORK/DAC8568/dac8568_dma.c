@@ -13,8 +13,10 @@
 #define DAC8568_CMD_UPDATE_DAC 0x01u
 #define DAC8568_CMD_WRITE_UPDATE_ALL 0x02u
 #define DAC8568_CMD_WRITE_UPDATE_DAC 0x03u
+#define DAC8568_CMD_CLEAR_CODE 0x05u
 #define DAC8568_CMD_SOFTWARE_RESET 0x07u
 #define DAC8568_CMD_INTERNAL_REF 0x08u
+#define DAC8568_CMD_FLEXIBLE_REF 0x09u
 
 #define DAC8568_CHANNEL_A 0x00u
 #define DAC8568_CHANNEL_B 0x01u
@@ -59,10 +61,11 @@
 #define DAC8568_FRAME_B_PREFIX DAC8568_FRAME_PREFIX(DAC8568_CMD_WRITE_INPUT, DAC8568_CHANNEL_B)
 #define DAC8568_FRAME_C_PREFIX DAC8568_FRAME_PREFIX(DAC8568_CMD_WRITE_INPUT, DAC8568_CHANNEL_C)
 #define DAC8568_FRAME_D_PREFIX DAC8568_FRAME_PREFIX(DAC8568_CMD_WRITE_UPDATE_ALL, DAC8568_CHANNEL_D)
-#define DAC8568_INTERNAL_REF_ENABLE_FRAME ((((uint32_t)DAC8568_CMD_INTERNAL_REF) << 24) | 0x01u)
 #define DAC8568_SOFT_RESET_FRAME (((uint32_t)DAC8568_CMD_SOFTWARE_RESET) << 24)
 
-#define DAC8568_REF_REFRESH_INTERVAL_MS 250u
+#define DAC8568_CLR_IGNORE_FRAME ((((uint32_t)DAC8568_CMD_CLEAR_CODE) << 24) | 0x03u)
+/* Flexible internal reference: Always-On (datasheet Table 12). */
+#define DAC8568_INTERNAL_REF_ALWAYS_ON_FRAME ((((uint32_t)DAC8568_CMD_FLEXIBLE_REF) << 24) | 0x0A0000u)
 #define DAC8568_STAGNANT_WINDOW_MS 40u
 #define DAC8568_STAGNANT_LIMIT 3u
 #define DAC8568_QSPI_MMAP_BASE 0x90000000u
@@ -77,6 +80,7 @@
 #define DAC8568_RECOVER_REASON_NONE 0u
 #define DAC8568_RECOVER_REASON_SPI_ERROR 1u
 #define DAC8568_RECOVER_REASON_STAGNANT 2u
+#define DAC8568_RECOVER_REASON_MANUAL 4u
 
 static uint32_t g_sample_rate_hz = 120000u;
 
@@ -104,17 +108,17 @@ static volatile uint32_t g_tick_count = 0u;
 static volatile uint32_t g_sample_count = 0u;
 static volatile uint8_t g_stream_running = 0u;
 static volatile uint32_t g_dma_buf_cycles = 0u;
-static volatile uint8_t g_ref_refresh_pending = 0u;
 static volatile uint32_t g_recover_count = 0u;
 static volatile uint32_t g_recover_reason = DAC8568_RECOVER_REASON_NONE;
 static volatile uint32_t g_ref_rearm_count = 0u;
 static volatile uint32_t g_ref_refresh_count = 0u;
+static volatile uint8_t g_manual_recover_pending = 0u;
+static volatile uint32_t g_manual_recover_count = 0u;
 static volatile uint32_t g_stagnant_count = 0u;
 
 static uint32_t g_service_last_tick = 0u;
 static uint32_t g_service_last_samples = 0u;
 static uint32_t g_service_last_fail = 0u;
-static uint32_t g_last_ref_refresh_tick = 0u;
 static volatile DAC8568_SourceMode_t g_source_mode = DAC8568_SOURCE_LUT;
 static const uint16_t *g_qspi_wave_data[DAC8568_QSPI_SOURCE_MAX] = {0};
 static uint32_t g_qspi_wave_samples[DAC8568_QSPI_SOURCE_MAX] = {0};
@@ -281,8 +285,12 @@ static HAL_StatusTypeDef dac8568_spi_tx_word32_retry(uint32_t word, uint32_t ret
   return HAL_ERROR;
 }
 
+static HAL_StatusTypeDef dac8568_set_clr_ignore(uint32_t retries) {
+  return dac8568_spi_tx_word32_retry(DAC8568_CLR_IGNORE_FRAME, retries);
+}
+
 static HAL_StatusTypeDef dac8568_rearm_internal_ref(uint32_t retries) {
-  HAL_StatusTypeDef st = dac8568_spi_tx_word32_retry(DAC8568_INTERNAL_REF_ENABLE_FRAME, retries);
+  HAL_StatusTypeDef st = dac8568_spi_tx_word32_retry(DAC8568_INTERNAL_REF_ALWAYS_ON_FRAME, retries);
   if (st == HAL_OK) {
     g_ref_rearm_count++;
   }
@@ -290,11 +298,13 @@ static HAL_StatusTypeDef dac8568_rearm_internal_ref(uint32_t retries) {
 }
 
 static HAL_StatusTypeDef dac8568_soft_reset_and_rearm(void) {
-  HAL_StatusTypeDef st_reset = dac8568_spi_tx_word32_retry(DAC8568_SOFT_RESET_FRAME, 1u);
+  HAL_StatusTypeDef st_reset = dac8568_spi_tx_word32_retry(DAC8568_SOFT_RESET_FRAME, 2u);
+  HAL_Delay(2);
+  HAL_StatusTypeDef st_clr = dac8568_set_clr_ignore(2u);
   HAL_Delay(2);
   HAL_StatusTypeDef st_ref = dac8568_rearm_internal_ref(2u);
-  HAL_Delay(10);
-  return ((st_reset == HAL_OK) && (st_ref == HAL_OK)) ? HAL_OK : HAL_ERROR;
+  HAL_Delay(30);
+  return ((st_reset == HAL_OK) && (st_clr == HAL_OK) && (st_ref == HAL_OK)) ? HAL_OK : HAL_ERROR;
 }
 
 static void dac8568_prepare_lut(void) {
@@ -458,12 +468,6 @@ static void dac8568_fill_samples(uint32_t *dst, uint32_t sample_count) {
   g_tick_count += sample_count;
   g_sample_count += sample_count;
   g_tx_ok += sample_count;
-
-  if ((sample_count > 0u) && (g_ref_refresh_pending != 0u)) {
-    g_ref_refresh_pending = 0u;
-    dst_base[0] = DAC8568_INTERNAL_REF_ENABLE_FRAME;
-    g_ref_refresh_count++;
-  }
 }
 
 static void dac8568_dma_on_half(void) {
@@ -564,11 +568,9 @@ void DAC8568_DMA_Start(void) {
   }
 
   g_stream_running = 1u;
-  g_ref_refresh_pending = 1u;
   g_service_last_samples = dac8568_get_tx_sample_counter();
   g_service_last_fail = g_tx_fail;
   g_service_last_tick = HAL_GetTick();
-  g_last_ref_refresh_tick = g_service_last_tick;
 }
 
 void DAC8568_DMA_OnTimerTick(void) {
@@ -614,7 +616,18 @@ void DAC8568_DMA_GetSampleCounter(uint32_t *sample_count) {
 }
 
 void DAC8568_DMA_Service(void) {
+  uint8_t manual = g_manual_recover_pending;
+  if (manual != 0u) {
+    g_manual_recover_pending = 0u;
+  }
+
   if (g_stream_running == 0u) {
+    if (manual != 0u) {
+      g_recover_reason = DAC8568_RECOVER_REASON_MANUAL;
+      g_recover_count++;
+      g_manual_recover_count++;
+      (void)dac8568_soft_reset_and_rearm();
+    }
     return;
   }
 
@@ -622,6 +635,10 @@ void DAC8568_DMA_Service(void) {
   uint32_t samples = dac8568_get_tx_sample_counter();
   uint32_t fails = g_tx_fail;
   uint32_t recover_reason = DAC8568_RECOVER_REASON_NONE;
+
+  if (manual != 0u) {
+    recover_reason |= DAC8568_RECOVER_REASON_MANUAL;
+  }
 
   if (fails != g_service_last_fail) {
     g_service_last_fail = fails;
@@ -642,17 +659,15 @@ void DAC8568_DMA_Service(void) {
     g_stagnant_count = 0u;
   }
 
-  if ((now - g_last_ref_refresh_tick) >= DAC8568_REF_REFRESH_INTERVAL_MS) {
-    g_ref_refresh_pending = 1u;
-    g_last_ref_refresh_tick = now;
-  }
-
   if (recover_reason == DAC8568_RECOVER_REASON_NONE) {
     return;
   }
 
   g_recover_reason = recover_reason;
   g_recover_count++;
+  if ((recover_reason & DAC8568_RECOVER_REASON_MANUAL) != 0u) {
+    g_manual_recover_count++;
+  }
 
   g_stream_running = 0u;
   dac8568_tim12_stop();
@@ -660,6 +675,14 @@ void DAC8568_DMA_Service(void) {
 
   (void)dac8568_soft_reset_and_rearm();
   DAC8568_DMA_Start();
+}
+
+void DAC8568_DMA_RequestManualRecover(void) {
+  g_manual_recover_pending = 1u;
+}
+
+uint32_t DAC8568_DMA_GetManualRecoverCount(void) {
+  return g_manual_recover_count;
 }
 
 void DAC8568_DMA_GetHealth(uint32_t *recover_count, uint32_t *recover_reason,
