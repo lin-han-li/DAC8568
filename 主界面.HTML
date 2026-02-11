@@ -1,182 +1,235 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <style>
-        :root {
-            --bg-color: #f0f2f5;
-            --card-bg: #ffffff;
-            --primary: #2563eb;
-            --text-main: #1e293b;
-            --accent: #10b981;
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STM32H7 320x230 Fixed Layout</title>
+<style>
+    /* 全局重置，防止浏览器默认边距导致计算错误 */
+    * {
+        box-sizing: border-box; 
+    }
 
-        body {
-            background-color: #d1d5db;
-            font-family: 'PingFang SC', 'Helvetica Neue', Arial, sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-        }
-        
-        /* 模拟 800x480 触摸屏 */
-        .lv-screen {
-            width: 800px;
-            height: 480px;
-            background-color: var(--bg-color);
-            border-radius: 20px;
-            box-shadow: 0 20px 50px rgba(0,0,0,0.2);
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-        }
+    body {
+        background-color: #333;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        margin: 0;
+        font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+    }
 
-        /* 顶部导航栏 (lv_obj_t with shadow) */
-        .lv-header {
-            background: var(--card-bg);
-            padding: 15px 30px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-            z-index: 10;
-        }
+    /* 屏幕容器：严格修改为 320x230 
+       注意：box-sizing: border-box 确保内边距不撑大容器
+    */
+    .screen {
+        width: 320px;
+        height: 230px; /* 您要求的 230高度 */
+        background: #F2F4F8;
+        position: relative;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        color: #333;
+        box-shadow: 0 0 0 10px #000;
+        border-radius: 2px;
+    }
 
-        .lv-header h2 {
-            margin: 0;
-            font-size: 20px;
-            color: var(--primary);
-            letter-spacing: 1px;
-        }
+    /* 顶部 Header: 28px */
+    .header {
+        height: 28px;
+        background-color: #FFFFFF;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 6px; /* 减小内边距 */
+        border-bottom: 1px solid #E5E5E5;
+        flex-shrink: 0; /* 防止被挤压 */
+    }
 
-        .status-badge {
-            background: #ecfdf5;
-            color: var(--accent);
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: bold;
-            border: 1px solid var(--accent);
-        }
+    .title-main {
+        font-size: 13px;
+        font-weight: 700;
+        color: #2c3e50;
+    }
 
-        /* 网格布局 (lv_layout_flex) */
-        .lv-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 25px;
-            padding: 30px;
-            flex-grow: 1;
-        }
+    .status-pill {
+        display: flex;
+        align-items: center;
+        background: #e8f5e9;
+        padding: 1px 5px;
+        border-radius: 6px;
+        border: 1px solid #c8e6c9;
+    }
 
-        /* 卡片按钮 (lv_card 样式) */
-        .lv-card {
-            background: var(--card-bg);
-            border-radius: 16px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            cursor: pointer;
-            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-            border: 1px solid #e2e8f0;
-            position: relative;
-        }
+    .status-dot {
+        width: 5px;
+        height: 5px;
+        background-color: #4caf50;
+        border-radius: 50%;
+        margin-right: 3px;
+    }
 
-        .lv-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 20px rgba(37, 99, 235, 0.1);
-            border-color: var(--primary);
-        }
+    .status-text {
+        font-size: 9px;
+        font-weight: 600;
+        color: #2e7d32;
+    }
 
-        .lv-card:active {
-            transform: scale(0.95);
-            background: #f8fafc;
-        }
+    /* 主体内容：计算剩余高度
+       230 - 28(Header) - 20(Footer) = 182px 可用空间
+    */
+    .body-content {
+        flex: 1;
+        padding: 4px; /* 极小外边距 */
+        display: flex;
+        flex-wrap: wrap; /* 允许换行 */
+        gap: 4px;     /* 卡片间距 4px */
+        align-content: flex-start;
+        width: 100%;
+    }
 
-        /* 图标装饰 */
-        .icon-box {
-            width: 60px;
-            height: 60px;
-            background: #eff6ff;
-            border-radius: 50%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            margin-bottom: 15px;
-            font-size: 28px;
-        }
+    /* 卡片尺寸严格计算：
+       宽度：(320px - 4px左 - 4px右 - 4px间距 - 4px间距) / 3 = ~101px
+       为了绝对安全，设置为 96px，确保不换行！
+       高度：(182px - 4px上 - 4px下 - 4px间距) / 2 = ~85px
+       设置为 82px，确保底部有空隙
+    */
+    .card {
+        width: 96px;  /* 关键修改：98->96，确保一行能放3个 */
+        height: 82px; /* 关键修改：适配 230 高度 */
+        background-color: #FFFFFF;
+        border-radius: 6px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        position: relative;
+        cursor: pointer;
+        border: 1px solid transparent;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
 
-        .lv-card-label {
-            font-size: 16px;
-            font-weight: 600;
-            color: var(--text-main);
-        }
+    /* 选中状态 */
+    .card.focused {
+        border-color: #2196f3;
+        box-shadow: 0 2px 8px rgba(33, 150, 243, 0.25);
+        z-index: 10;
+    }
 
-        .lv-card-desc {
-            font-size: 11px;
-            color: #94a3b8;
-            margin-top: 5px;
-        }
+    /* 图标圆圈 */
+    .icon-circle {
+        width: 28px; /* 稍微缩小以适应高度 */
+        height: 28px;
+        border-radius: 50%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-bottom: 4px;
+        font-size: 14px;
+    }
 
-        .lv-footer {
-            padding: 10px 30px;
-            background: #f8fafc;
-            border-top: 1px solid #e2e8f0;
-            font-size: 12px;
-            color: #64748b;
-            display: flex;
-            justify-content: space-between;
-        }
-    </style>
+    .card-title-cn {
+        font-size: 11px;
+        font-weight: 700;
+        color: #34495e;
+        line-height: 1.1;
+    }
+
+    .card-title-en {
+        font-size: 8px; /* 英文极小字，装饰用 */
+        color: #95a5a6;
+        transform: scale(0.85);
+        margin-top: 1px;
+    }
+
+    /* 底部 Footer: 20px */
+    .footer {
+        height: 20px;
+        background-color: #F0F2F5;
+        display: flex;
+        align-items: center;
+        padding: 0 6px;
+        font-size: 9px;
+        color: #7f8c8d;
+        border-top: 1px solid #e0e0e0;
+        flex-shrink: 0;
+    }
+    
+    .footer-log {
+        flex: 1;
+        text-align: center;
+        color: #3498db;
+        white-space: nowrap;
+        overflow: hidden;
+    }
+
+    /* 颜色保持不变 */
+    .t-orange .icon-circle { background-color: #fff3e0; color: #ff9800; }
+    .t-blue .icon-circle { background-color: #e3f2fd; color: #2196f3; }
+    .t-red .icon-circle { background-color: #ffebee; color: #f44336; }
+    .t-purple .icon-circle { background-color: #f3e5f5; color: #9c27b0; }
+    .t-cyan .icon-circle { background-color: #e0f7fa; color: #00bcd4; }
+    .t-green .icon-circle { background-color: #e8f5e9; color: #4caf50; }
+
+</style>
 </head>
 <body>
 
-<div class="lv-screen">
-    <header class="lv-header">
-        <h2>WindPower DC-System Monitor</h2>
-        <div class="status-badge">● 边缘节点正常</div>
-    </header>
+    <div class="screen">
+        <div class="header">
+            <div class="title-main">直流故障诊断平台</div>
+            <div class="status-pill">
+                <div class="status-dot"></div>
+                <div class="status-text">就绪</div>
+            </div>
+        </div>
 
-    <div class="lv-grid">
-        <div class="lv-card" onclick="alert('加载中...')">
-            <div class="icon-box">⚡</div>
-            <span class="lv-card-label">交流窜入</span>
-            <span class="lv-card-desc">AC Ingress Simulation</span>
+        <div class="body-content">
+            <div class="card t-orange">
+                <div class="icon-circle">⚡</div>
+                <div class="card-title-cn">正极接地</div>
+                <div class="card-title-en">POS-EARTH</div>
+            </div>
+
+            <div class="card t-blue focused">
+                <div class="icon-circle">📉</div>
+                <div class="card-title-cn">负极接地</div>
+                <div class="card-title-en">NEG-EARTH</div>
+            </div>
+
+            <div class="card t-red">
+                <div class="icon-circle">⚠️</div>
+                <div class="card-title-cn">交流窜入</div>
+                <div class="card-title-en">AC-INTRU</div>
+            </div>
+
+            <div class="card t-purple">
+                <div class="icon-circle">🔄</div>
+                <div class="card-title-cn">环网故障</div>
+                <div class="card-title-en">RING-NET</div>
+            </div>
+
+            <div class="card t-cyan">
+                <div class="icon-circle">🔋</div>
+                <div class="card-title-cn">绝缘降低</div>
+                <div class="card-title-en">INS-DROP</div>
+            </div>
+
+            <div class="card t-green">
+                <div class="icon-circle">🔍</div>
+                <div class="card-title-cn">系统自检</div>
+                <div class="card-title-en">SELF-CHECK</div>
+            </div>
         </div>
-        <div class="lv-card" onclick="alert('加载中...')">
-            <div class="icon-box">🌍</div>
-            <span class="lv-card-label">母线接地</span>
-            <span class="lv-card-desc">Ground Fault Logic</span>
-        </div>
-        <div class="lv-card" onclick="alert('加载中...')">
-            <div class="icon-box">📉</div>
-            <span class="lv-card-label">绝缘劣化</span>
-            <span class="lv-card-desc">Insulation Aging</span>
-        </div>
-        <div class="lv-card" onclick="alert('加载中...')">
-            <div class="icon-box">🔋</div>
-            <span class="lv-card-label">电容老化</span>
-            <span class="lv-card-desc">Capacitor Health</span>
-        </div>
-        <div class="lv-card" onclick="alert('加载中...')">
-            <div class="icon-box">📊</div>
-            <span class="lv-card-label">PWM异常</span>
-            <span class="lv-card-desc">Harmonic Distortion</span>
-        </div>
-        <div class="lv-card" onclick="alert('加载中...')">
-            <div class="icon-box">⚙️</div>
-            <span class="lv-card-label">IGBT故障</span>
-            <span class="lv-card-desc">Switching Loss</span>
+
+        <div class="footer">
+            <div style="width: 50px;">研发组</div>
+            <div class="footer-log">等待指令...</div>
+            <div style="width: 50px; text-align: right;">21:30</div>
         </div>
     </div>
-
-    <footer class="lv-footer">
-        <span>项目单位：风电场直流系统研发组</span>
-        <span>2026-02-05 07:43</span>
-    </footer>
-</div>
 
 </body>
 </html>

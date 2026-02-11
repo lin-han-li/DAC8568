@@ -12,6 +12,9 @@
 #include "lcd_spi_200.h"
 #include <stdbool.h>
 #include <stdint.h>
+#if LV_USE_SYSMON
+#include "lv_sysmon.h"
+#endif
 
 /*********************
  * DEFINES

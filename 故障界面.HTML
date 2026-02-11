@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STM32H7 320x240 Sub-Screen</title>
+<style>
+    * { box-sizing: border-box; }
+
+    body {
+        background-color: #333;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        margin: 0;
+        font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+    }
+
+    /* 屏幕容器：320x240 
+       严格像素控制
+    */
+    .screen {
+        width: 320px;
+        height: 240px;
+        background: #F2F4F8; /* 淡灰背景 */
+        position: relative;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        color: #333;
+        box-shadow: 0 0 0 10px #000;
+        border-radius: 2px;
+    }
+
+    /* --- 1. Header (28px) --- */
+    .header {
+        height: 28px;
+        background-color: #FFFFFF;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 6px;
+        border-bottom: 1px solid #E5E5E5;
+        flex-shrink: 0;
+    }
+
+    .btn-back {
+        display: flex;
+        align-items: center;
+        color: #666;
+        cursor: pointer;
+        padding: 2px 4px;
+        border-radius: 4px;
+        background: #F8F9FA;
+        border: 1px solid #EEE;
+    }
+    .btn-back:active { background-color: #E0E0E0; }
+    
+    .btn-back-icon { font-size: 12px; margin-right: 2px; color: #2196F3; }
+    .btn-back-text { font-size: 11px; font-weight: 600; }
+
+    .header-title {
+        font-size: 13px;
+        font-weight: 700;
+        color: #2c3e50;
+        flex: 1;
+        text-align: center;
+        padding-right: 36px; /* 平衡左侧按钮宽度 */
+    }
+
+    /* --- 2. Body (192px) --- */
+    /* 计算：240 - 28 - 20 = 192px 可用
+       内容占用：8(pad) + 56(status) + 8(gap) + 48(param) + 8(gap) + 50(action) + 8(pad) = 186px
+       剩余 6px 留白
+    */
+    .body-content {
+        height: 192px;
+        padding: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px; /* 模块间距 */
+    }
+
+    /* 模块 A: 状态监控 (56px) */
+    .status-card {
+        height: 56px;
+        background: #FFFFFF;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        padding: 0 10px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.03);
+        border: 1px solid #F0F0F0;
+        border-left: 4px solid #4CAF50; /* 绿色指示条 */
+    }
+    
+    .status-icon {
+        width: 32px;
+        height: 32px;
+        background: #e8f5e9;
+        border-radius: 50%;
+        color: #4CAF50;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-size: 16px;
+        margin-right: 10px;
+    }
+
+    .status-info {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+    .status-main { font-size: 13px; font-weight: 700; color: #333; line-height: 1.2; }
+    .status-sub { font-size: 10px; color: #999; margin-top: 2px; font-family: monospace;}
+
+    /* 模块 B: 参数调节 (48px) */
+    .param-row {
+        height: 48px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: #FFFFFF;
+        border-radius: 6px;
+        padding: 0 4px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.03);
+        border: 1px solid #F0F0F0;
+    }
+
+    .param-label {
+        font-size: 12px;
+        font-weight: 600;
+        color: #555;
+        margin-left: 8px;
+    }
+
+    .btn-adjust {
+        width: 44px;
+        height: 40px;
+        background: #FFFFFF;
+        border: 1px solid #E0E0E0;
+        border-radius: 4px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-size: 18px;
+        color: #555;
+        cursor: pointer;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    }
+    .btn-adjust:active { background: #F0F0F0; transform: translateY(1px); }
+    /* 模拟 LVGL 焦点 */
+    .btn-adjust.focused { border: 2px solid #2196F3; color: #2196F3; }
+
+    .param-value {
+        font-size: 18px;
+        font-weight: 700;
+        color: #2196F3;
+        flex: 1;
+        text-align: center;
+        font-family: monospace;
+    }
+
+    /* 模块 C: 操作按钮 (50px) */
+    .action-row {
+        height: 50px;
+        display: flex;
+        gap: 8px;
+    }
+
+    .btn-action {
+        flex: 1;
+        border-radius: 6px;
+        border: none;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        cursor: pointer;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        position: relative;
+    }
+    .btn-action:active { transform: translateY(2px); box-shadow: none; }
+
+    /* 触发按钮 (蓝) */
+    .btn-trigger {
+        background: linear-gradient(180deg, #42A5F5 0%, #1976D2 100%);
+        color: white;
+        border: 1px solid #1565C0;
+    }
+    
+    /* 停止按钮 (红/白) */
+    .btn-stop {
+        background: #FFFFFF;
+        border: 1px solid #FFCDD2;
+        color: #E57373;
+    }
+
+    .btn-title { font-size: 13px; font-weight: 700; }
+    .btn-subtitle { font-size: 9px; opacity: 0.9; margin-top: 1px; font-weight: 500; }
+
+    /* --- 3. Footer (20px) --- */
+    .footer {
+        height: 20px;
+        background-color: #F0F2F5;
+        display: flex;
+        align-items: center;
+        padding: 0 6px;
+        font-size: 10px;
+        color: #7f8c8d;
+        border-top: 1px solid #e0e0e0;
+        flex-shrink: 0;
+    }
+    .footer-log { flex: 1; text-align: center; color: #3498db; }
+
+</style>
+</head>
+<body>
+
+    <div class="screen">
+        <div class="header">
+            <div class="btn-back">
+                <span class="btn-back-icon">◀</span>
+                <span class="btn-back-text">返回</span>
+            </div>
+            <div class="header-title">正极接地故障</div>
+        </div>
+
+        <div class="body-content">
+            
+            <div class="status-card">
+                <div class="status-icon">⚡</div>
+                <div class="status-info">
+                    <div class="status-main">设备就绪</div>
+                    <div class="status-sub">Ready to trigger</div>
+                </div>
+            </div>
+
+            <div class="param-row">
+                <div class="param-label">时长(s)</div>
+                <div style="flex:1; display:flex; align-items:center; justify-content:flex-end; gap:4px;">
+                    <div class="btn-adjust">-</div>
+                    <div class="param-value">10</div>
+                    <div class="btn-adjust focused">+</div>
+                </div>
+            </div>
+
+            <div class="action-row">
+                <div class="btn-action btn-trigger">
+                    <span class="btn-title">开始触发</span>
+                    <span class="btn-subtitle">START</span>
+                </div>
+                <div class="btn-action btn-stop">
+                    <span class="btn-title">停止</span>
+                    <span class="btn-subtitle">STOP</span>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="footer">
+            <div style="width: 50px;">研发组</div>
+            <div class="footer-log">参数已更新</div>
+            <div style="width: 50px; text-align: right;">21:32</div>
+        </div>
+    </div>
+
+</body>
+</html>
