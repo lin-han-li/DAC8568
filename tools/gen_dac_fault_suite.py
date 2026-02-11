@@ -2,6 +2,12 @@
 """
 Generate 7 x 4MB DAC8568 waveform binaries for SD -> W25Q256 full-sync.
 
+Channel semantics (external domain, +/-5V):
+  A: DC bus positive voltage (bipolar, normal positive)
+  B: DC bus negative voltage (bipolar, normal negative)
+  C: Load current (unipolar, >=0)
+  D: Leakage current (unipolar, >=0)
+
 Target SD paths on MCU:
   0:/wave/normal.bin
   0:/wave/ac_coupling.bin
@@ -21,7 +27,7 @@ import math
 import os
 import struct
 from dataclasses import dataclass
-from typing import Callable, Iterable, Tuple
+from typing import Callable, Tuple
 
 
 MAGIC = 0x44384357  # "D8CW"
@@ -81,99 +87,262 @@ def clamp(v: float, lo: float = VOUT_MIN, hi: float = VOUT_MAX) -> float:
     return max(lo, min(hi, v))
 
 
+def clamp_bipolar(v: float) -> float:
+    return clamp(v, VOUT_MIN, VOUT_MAX)
+
+
+def clamp_unipolar(v: float) -> float:
+    return clamp(v, 0.0, VOUT_MAX)
+
+
+def cycles_for_hz(hz_target: float, sample_rate: int, sample_count: int) -> int:
+    if hz_target <= 0.0:
+        return 0
+    cycles = int(round(hz_target * sample_count / float(sample_rate)))
+    return max(1, cycles)
+
+
+@dataclass(frozen=True)
+class WaveContext:
+    sample_rate: int
+    sample_count: int
+    two_pi_over_n: float
+
+    cyc_10: int
+    cyc_50: int
+    cyc_100: int
+    cyc_120: int
+    cyc_8k: int
+    cyc_12k: int
+
+    drift_cyc_1: int
+    drift_cyc_2: int
+
+    sag_period_samples: int
+    sag_len_samples: int
+    surge_len_samples: int
+    sag_tau_samples: float
+
+    igbt_period_samples: int
+    igbt_w1_samples: int
+    igbt_w2_samples: int
+    igbt_tau_samples: float
+
+    def sin_cycles(self, i: int, cycles: int) -> float:
+        if cycles == 0:
+            return 0.0
+        return math.sin(self.two_pi_over_n * float(cycles) * float(i))
+
+
 @dataclass(frozen=True)
 class WaveSpec:
     name: str
     filename: str
-    func: Callable[[int, float, XorShift32], Tuple[float, float, float, float]]
+    func: Callable[[int, XorShift32], Tuple[float, float, float, float]]
 
 
-def make_base_cycles(sample_rate: int, sample_count: int) -> Tuple[int, int, int, int]:
-    # Choose integer cycles per file so wave matches at wrap-around.
-    # approx A=1k, B=2k, C=3k, D=4k for sample_rate=240k, sample_count=524280
-    return (2184, 4369, 6553, 8738)
+def make_context(sample_rate: int, sample_count: int) -> WaveContext:
+    two_pi_over_n = 2.0 * math.pi / float(sample_count)
 
+    sag_period_samples = max(1, int(round(sample_rate / 10.0)))  # ~100ms @ 10Hz
+    sag_len_samples = max(1, int(round(sample_rate * 0.005)))  # 5ms sag window
+    surge_len_samples = max(1, int(round(sample_rate * 0.001)))  # 1ms surge
+    sag_tau_samples = max(1.0, float(sample_rate) * 0.002)  # 2ms decay
 
-def base_wave(i: int, t: float, rng: XorShift32, sample_rate: int, sample_count: int) -> Tuple[float, float, float, float]:
-    ca, cb, cc, cd = make_base_cycles(sample_rate, sample_count)
-    amp = 4.0
-    pa = 2.0 * math.pi * ca * (i / sample_count)
-    pb = 2.0 * math.pi * cb * (i / sample_count)
-    pc = 2.0 * math.pi * cc * (i / sample_count)
-    pd = 2.0 * math.pi * cd * (i / sample_count)
-    return (
-        amp * math.sin(pa),
-        amp * math.sin(pb),
-        amp * math.sin(pc),
-        amp * math.sin(pd),
+    igbt_period_samples = max(1, int(round(sample_rate / 50.0)))  # 20ms @ 50Hz
+    igbt_w1_samples = max(1, int(round(sample_rate * 0.001)))  # ~1ms
+    igbt_w2_samples = max(1, int(round(sample_rate * 0.001)))  # ~1ms
+    igbt_tau_samples = max(1.0, float(sample_rate) * 0.0015)  # 1.5ms decay
+
+    return WaveContext(
+        sample_rate=sample_rate,
+        sample_count=sample_count,
+        two_pi_over_n=two_pi_over_n,
+        cyc_10=cycles_for_hz(10.0, sample_rate, sample_count),
+        cyc_50=cycles_for_hz(50.0, sample_rate, sample_count),
+        cyc_100=cycles_for_hz(100.0, sample_rate, sample_count),
+        cyc_120=cycles_for_hz(120.0, sample_rate, sample_count),
+        cyc_8k=cycles_for_hz(8000.0, sample_rate, sample_count),
+        cyc_12k=cycles_for_hz(12000.0, sample_rate, sample_count),
+        drift_cyc_1=1,
+        drift_cyc_2=2,
+        sag_period_samples=sag_period_samples,
+        sag_len_samples=sag_len_samples,
+        surge_len_samples=surge_len_samples,
+        sag_tau_samples=sag_tau_samples,
+        igbt_period_samples=igbt_period_samples,
+        igbt_w1_samples=igbt_w1_samples,
+        igbt_w2_samples=igbt_w2_samples,
+        igbt_tau_samples=igbt_tau_samples,
     )
 
 
-def wave_normal(i: int, t: float, rng: XorShift32, sample_rate: int, sample_count: int) -> Tuple[float, float, float, float]:
-    # Baseline should be DC on all 4 channels.
-    LV_DC = 0.0
-    return (LV_DC, LV_DC, LV_DC, LV_DC)
+def wave_baseline(i: int, rng: XorShift32, ctx: WaveContext) -> Tuple[float, float, float, float]:
+    # Normal DC bus with small differential 100Hz ripple; currents are unipolar.
+    s100 = ctx.sin_cycles(i, ctx.cyc_100)
+
+    a = 3.00 + 0.03 * s100
+    b = -3.00 - 0.03 * s100
+    c = 1.50 + 0.06 * s100
+    d = 0.05 + rng.noise(0.005)
+
+    return (
+        clamp_bipolar(a),
+        clamp_bipolar(b),
+        clamp_unipolar(c),
+        clamp_unipolar(d),
+    )
 
 
-def wave_ac_coupling(i: int, t: float, rng: XorShift32, sample_rate: int, sample_count: int) -> Tuple[float, float, float, float]:
-    a, b, c, d = base_wave(i, t, rng, sample_rate, sample_count)
-    cm = 0.8 * math.sin(2.0 * math.pi * 50.0 * t) + 0.35 * math.sin(2.0 * math.pi * 100.0 * t)
-    hf = 0.15 * math.sin(2.0 * math.pi * 8000.0 * t)
-    return tuple(clamp(v + cm + hf) for v in (a, b, c, d))  # type: ignore[return-value]
+def wave_normal(i: int, rng: XorShift32, ctx: WaveContext) -> Tuple[float, float, float, float]:
+    return wave_baseline(i, rng, ctx)
 
 
-def wave_bus_ground(i: int, t: float, rng: XorShift32, sample_rate: int, sample_count: int) -> Tuple[float, float, float, float]:
-    a, b, c, d = base_wave(i, t, rng, sample_rate, sample_count)
-    # DC offset drift + partial saturation segments
-    drift = 1.8 * math.sin(2.0 * math.pi * 0.8 * t)
-    step = 2.0 if (i % 12000) < 6000 else -1.0  # ~50ms step segments at 240k
-    v = [a * 0.9 + drift + step, b * 0.7 + drift + step, c * 0.6 + drift + step, d * 0.8 + drift + step]
-    # Add a rare deep glitch on channel C
-    if (i % 48000) == 1200:
-        v[2] -= 4.5
-    return tuple(clamp(x) for x in v)  # type: ignore[return-value]
+def wave_ac_coupling(i: int, rng: XorShift32, ctx: WaveContext) -> Tuple[float, float, float, float]:
+    s50 = ctx.sin_cycles(i, ctx.cyc_50)
+    s100 = ctx.sin_cycles(i, ctx.cyc_100)
+    s8k = ctx.sin_cycles(i, ctx.cyc_8k)
+    s12k = ctx.sin_cycles(i, ctx.cyc_12k)
+
+    # Independent fault waveform: base DC bus around +/-3V with distinct common-mode
+    # AC coupling interference plus modest HF ripple (<= 12.8kHz).
+    cm = 0.35 * s50 + 0.18 * s100
+    hf = 0.05 * s8k + 0.02 * s12k
+
+    a = 3.00 + 0.03 * s100 + cm + hf
+    b = -3.00 - 0.03 * s100 + cm + hf
+    c = 1.50 + 0.06 * s100 + 0.35 * s50 + 0.18 * s100
+    d = 0.05 + 0.05 * abs(s50) + rng.noise(0.01)
+
+    return (
+        clamp_bipolar(a),
+        clamp_bipolar(b),
+        clamp_unipolar(c),
+        clamp_unipolar(d),
+    )
 
 
-def wave_insulation(i: int, t: float, rng: XorShift32, sample_rate: int, sample_count: int) -> Tuple[float, float, float, float]:
-    a, b, c, d = base_wave(i, t, rng, sample_rate, sample_count)
-    slow = 0.9 * math.sin(2.0 * math.pi * 0.3 * t) + 0.4 * math.sin(2.0 * math.pi * 0.05 * t)
-    n = rng.noise(0.25)
-    v = [a * 0.95 + slow + n, b * 0.9 + slow + rng.noise(0.20), c * 0.85 + slow + rng.noise(0.20), d * 0.9 + slow + rng.noise(0.20)]
-    return tuple(clamp(x) for x in v)  # type: ignore[return-value]
+def wave_bus_ground(i: int, rng: XorShift32, ctx: WaveContext) -> Tuple[float, float, float, float]:
+    # Independent fault waveform with periodic bus sag window.
+    s100 = ctx.sin_cycles(i, ctx.cyc_100)
+    a = 3.00 + 0.03 * s100
+    b = -3.00 - 0.03 * s100
+    c = 1.50 + 0.06 * s100
+    d = 0.05 + rng.noise(0.005)
+
+    win = i % ctx.sag_period_samples
+    if win < ctx.sag_len_samples:
+        a = 0.5
+        b = b + 1.3  # drift towards 0V
+
+        if win < ctx.surge_len_samples:
+            c = 3.0
+        else:
+            c = 0.2
+
+        d = 0.20 + 1.00 * math.exp(-float(win) / ctx.sag_tau_samples)
+
+    return (
+        clamp_bipolar(a),
+        clamp_bipolar(b),
+        clamp_unipolar(c),
+        clamp_unipolar(d),
+    )
 
 
-def wave_cap_aging(i: int, t: float, rng: XorShift32, sample_rate: int, sample_count: int) -> Tuple[float, float, float, float]:
-    a, b, c, d = base_wave(i, t, rng, sample_rate, sample_count)
-    ripple = 0.9 * math.sin(2.0 * math.pi * 120.0 * t)
-    env = 0.75 + 0.15 * math.sin(2.0 * math.pi * 120.0 * t)
-    v = [a * env + ripple * 0.4, b * env + ripple * 0.35, c * env + ripple * 0.3, d * env + ripple * 0.25]
-    return tuple(clamp(x) for x in v)  # type: ignore[return-value]
+def wave_insulation(i: int, rng: XorShift32, ctx: WaveContext) -> Tuple[float, float, float, float]:
+    # Independent fault waveform: slow drift + increased noise + leakage rise.
+    s100 = ctx.sin_cycles(i, ctx.cyc_100)
+
+    drift = 0.20 * ctx.sin_cycles(i, ctx.drift_cyc_2)
+    slow = 0.08 * ctx.sin_cycles(i, ctx.drift_cyc_1)
+
+    a = 3.00 + 0.03 * s100 + drift + rng.noise(0.02)
+    b = -3.00 - 0.03 * s100 + drift + rng.noise(0.02)
+    c = 1.50 + 0.06 * s100 + slow + rng.noise(0.05)
+
+    # Slow leakage rise (0.05V -> ~0.5V) with added noise; keep unipolar.
+    env = 0.5 * (1.0 + ctx.sin_cycles(i, ctx.drift_cyc_1))
+    d = 0.05 + 0.45 * env + rng.noise(0.02)
+
+    return (
+        clamp_bipolar(a),
+        clamp_bipolar(b),
+        clamp_unipolar(c),
+        clamp_unipolar(d),
+    )
 
 
-def wave_pwm_abnormal(i: int, t: float, rng: XorShift32, sample_rate: int, sample_count: int) -> Tuple[float, float, float, float]:
-    a, b, c, d = base_wave(i, t, rng, sample_rate, sample_count)
-    pwm = 0.6 * math.sin(2.0 * math.pi * 8000.0 * t) + 0.25 * math.sin(2.0 * math.pi * 16000.0 * t)
-    jitter = 0.15 * math.sin(2.0 * math.pi * 12.0 * t)
-    v = [a + pwm + rng.noise(0.05), b + pwm * 0.8 + jitter, c + pwm * 0.6 + jitter, d + pwm * 0.7 + rng.noise(0.05)]
-    return tuple(clamp(x) for x in v)  # type: ignore[return-value]
+def wave_cap_aging(i: int, rng: XorShift32, ctx: WaveContext) -> Tuple[float, float, float, float]:
+    s100 = ctx.sin_cycles(i, ctx.cyc_100)
+    s120 = ctx.sin_cycles(i, ctx.cyc_120)
+
+    # Independent fault waveform: increased 100/120Hz ripple and slightly reduced average bus.
+    a = 2.40 + 1.80 * s100 + 0.30 * s120
+    b = -2.40 - 1.80 * s100 - 0.30 * s120
+    c = 1.50 + 0.80 * s100 + 0.15 * s120
+    d = 0.05 + rng.noise(0.005)
+
+    return (
+        clamp_bipolar(a),
+        clamp_bipolar(b),
+        clamp_unipolar(c),
+        clamp_unipolar(d),
+    )
 
 
-def wave_igbt_fault(i: int, t: float, rng: XorShift32, sample_rate: int, sample_count: int) -> Tuple[float, float, float, float]:
-    a, b, c, d = base_wave(i, t, rng, sample_rate, sample_count)
-    # Periodic dropout/clamp windows every 20ms (~50Hz)
-    win = i % int(sample_rate / 50)  # 4800 @ 240k
-    v = [a, b, c, d]
-    if win < 240:
-        v = [x * 0.05 for x in v]  # almost zero
-    elif win < 480:
-        v = [0.0, 0.0, 0.0, 0.0]
-    elif win < 720:
-        v = [clamp(x, -1.0, 1.0) for x in v]
-    # Add hard clipping to mimic protection
-    return tuple(clamp(x) for x in v)  # type: ignore[return-value]
+def wave_pwm_abnormal(i: int, rng: XorShift32, ctx: WaveContext) -> Tuple[float, float, float, float]:
+    # Independent fault waveform: PWM ripple (<= 12.8kHz) + modulation on current.
+    s100 = ctx.sin_cycles(i, ctx.cyc_100)
+    s8k = ctx.sin_cycles(i, ctx.cyc_8k)
+    s12k = ctx.sin_cycles(i, ctx.cyc_12k)
+    s10 = ctx.sin_cycles(i, ctx.cyc_10)
+
+    a = 3.00 + 0.03 * s100 + 0.10 * s8k + 0.05 * s12k
+    b = -3.00 - 0.03 * s100 + 0.10 * s8k + 0.05 * s12k
+
+    mod = 1.0 + 0.2 * s10
+    c = 1.50 + 0.06 * s100 + mod * (0.50 * s8k + 0.20 * s12k) + rng.noise(0.03)
+
+    d = 0.05 + 0.03 * s8k + rng.noise(0.01)
+
+    return (
+        clamp_bipolar(a),
+        clamp_bipolar(b),
+        clamp_unipolar(c),
+        clamp_unipolar(d),
+    )
 
 
-def write_bin(path: str, sample_rate: int, sample_count: int, func: Callable[[int, float, XorShift32], Tuple[float, float, float, float]]) -> None:
+def wave_igbt_fault(i: int, rng: XorShift32, ctx: WaveContext) -> Tuple[float, float, float, float]:
+    # Independent fault waveform: periodic drop/clamp windows on current with bus sag and leakage spikes.
+    s100 = ctx.sin_cycles(i, ctx.cyc_100)
+    a = 3.00 + 0.03 * s100
+    b = -3.00 - 0.03 * s100
+    c = 1.50 + 0.06 * s100
+    d = 0.05 + rng.noise(0.005)
+
+    win = i % ctx.igbt_period_samples
+    if win < ctx.igbt_w1_samples:
+        c = 0.0
+        a = a - 1.2
+        b = b + 1.2
+        d = d + 0.5 * math.exp(-float(win) / ctx.igbt_tau_samples)
+    elif win < (ctx.igbt_w1_samples + ctx.igbt_w2_samples):
+        c = 0.4
+        a = a - 0.6
+        b = b + 0.6
+        d = d + 0.25 * math.exp(-float(win - ctx.igbt_w1_samples) / ctx.igbt_tau_samples)
+
+    return (
+        clamp_bipolar(a),
+        clamp_bipolar(b),
+        clamp_unipolar(c),
+        clamp_unipolar(d),
+    )
+
+
+def write_bin(path: str, sample_rate: int, sample_count: int, func: Callable[[int, XorShift32], Tuple[float, float, float, float]]) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
 
     data_bytes = sample_count * CHANNELS * 2
@@ -193,8 +362,7 @@ def write_bin(path: str, sample_rate: int, sample_count: int, func: Callable[[in
             out = bytearray()
             for j in range(n):
                 idx = base + j
-                t = idx / float(sample_rate)
-                va, vb, vc, vd = func(idx, t, rng)
+                va, vb, vc, vd = func(idx, rng)
                 out.extend(struct.pack(
                     "<4H",
                     voltage_to_code(va),
@@ -228,7 +396,7 @@ def write_bin(path: str, sample_rate: int, sample_count: int, func: Callable[[in
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate full 7-partition DAC8568 fault suite (7 x 4MB).")
     parser.add_argument("--out-dir", default="sd_card_payload/copy_to_sd/wave", help="Output directory for wave/*.bin")
-    parser.add_argument("--sample-rate", type=int, default=240000)
+    parser.add_argument("--sample-rate", type=int, default=102400)
     args = parser.parse_args()
 
     sample_rate = int(args.sample_rate)
@@ -236,16 +404,17 @@ def main() -> int:
         raise ValueError("sample-rate must be positive")
 
     sample_count = int(FULL_SAMPLE_COUNT)
+    ctx = make_context(sample_rate, sample_count)
 
     out_dir = args.out_dir
     suite = [
-        WaveSpec("normal", "normal.bin", lambda i, t, r: wave_normal(i, t, r, sample_rate, sample_count)),
-        WaveSpec("ac_coupling", "ac_coupling.bin", lambda i, t, r: wave_ac_coupling(i, t, r, sample_rate, sample_count)),
-        WaveSpec("bus_ground", "bus_ground.bin", lambda i, t, r: wave_bus_ground(i, t, r, sample_rate, sample_count)),
-        WaveSpec("insulation", "insulation.bin", lambda i, t, r: wave_insulation(i, t, r, sample_rate, sample_count)),
-        WaveSpec("cap_aging", "cap_aging.bin", lambda i, t, r: wave_cap_aging(i, t, r, sample_rate, sample_count)),
-        WaveSpec("pwm_abnormal", "pwm_abnormal.bin", lambda i, t, r: wave_pwm_abnormal(i, t, r, sample_rate, sample_count)),
-        WaveSpec("igbt_fault", "igbt_fault.bin", lambda i, t, r: wave_igbt_fault(i, t, r, sample_rate, sample_count)),
+        WaveSpec("normal", "normal.bin", lambda i, r: wave_normal(i, r, ctx)),
+        WaveSpec("ac_coupling", "ac_coupling.bin", lambda i, r: wave_ac_coupling(i, r, ctx)),
+        WaveSpec("bus_ground", "bus_ground.bin", lambda i, r: wave_bus_ground(i, r, ctx)),
+        WaveSpec("insulation", "insulation.bin", lambda i, r: wave_insulation(i, r, ctx)),
+        WaveSpec("cap_aging", "cap_aging.bin", lambda i, r: wave_cap_aging(i, r, ctx)),
+        WaveSpec("pwm_abnormal", "pwm_abnormal.bin", lambda i, r: wave_pwm_abnormal(i, r, ctx)),
+        WaveSpec("igbt_fault", "igbt_fault.bin", lambda i, r: wave_igbt_fault(i, r, ctx)),
     ]
 
     for spec in suite:

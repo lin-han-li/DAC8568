@@ -96,7 +96,7 @@ void DAC_FaultBurst_GetUiState(uint32_t *ready_mask, uint8_t *active_fault_id_0_
 #define KEY4_GPIO_Port GPIOB
 
 #ifndef DAC_SAMPLE_RATE_HZ
-#define DAC_SAMPLE_RATE_HZ 240000u
+#define DAC_SAMPLE_RATE_HZ 102400u
 #endif
 
 #ifndef DAC_WAVE_SD_PATH_NORMAL

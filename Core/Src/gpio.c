@@ -86,7 +86,7 @@ void MX_GPIO_Init(void)
   GPIO_InitStruct.Pin = DAC8568_LDAC_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
   HAL_GPIO_Init(DAC8568_LDAC_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : BG_Pin BEEF_Pin */

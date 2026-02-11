@@ -346,13 +346,6 @@ static void dac_fault_post_command(uint8_t cmd_type, uint8_t fault_id_0_5, uint3
 
 /* USER CODE END FunctionPrototypes */
 
-/* USER CODE BEGIN 0 */
-bool edgewind_ui_can_show_enter_button(void)
-{
-  return (s_dac_wave_boot_sync_done != 0u);
-}
-/* USER CODE END 0 */
-
 void LVGL_Task(void *argument);
 void LED_Task(void *argument);
 void Main_Task(void *argument);
@@ -519,6 +512,7 @@ void Main_Task(void *argument)
 {
   /* USER CODE BEGIN Main_Task */
   uint8_t stream_enabled = 0u;
+  uint32_t started_sps = 0u;
   const uint8_t do_boot_sync = (DAC_WAVE_BOOT_FULL_SYNC != 0u) ? 1u : 0u;
 
   memset(s_dac_wave_info, 0, sizeof(s_dac_wave_info));
@@ -612,6 +606,7 @@ void Main_Task(void *argument)
                (unsigned long)base->sample_count,
                (unsigned long)base->qspi_mmap_addr);
         stream_enabled = 1u;
+        started_sps = base->sample_rate_hz;
       } else {
         printf("[DAC WAVE] baseline source switch failed, no output\r\n");
       }
@@ -621,7 +616,7 @@ void Main_Task(void *argument)
   if (stream_enabled != 0u) {
     DAC8568_DMA_Start();
     s_dac_stream_started = 1u;
-    printf("[DAC] start sps=%lu\r\n", (unsigned long)DAC_SAMPLE_RATE_HZ);
+    printf("[DAC] start sps=%lu\r\n", (unsigned long)started_sps);
   } else {
     DAC8568_OutputFixedVoltage(0.0f);
     printf("[DAC] stream disabled (no waveform output)\r\n");

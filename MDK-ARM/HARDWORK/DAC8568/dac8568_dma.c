@@ -205,7 +205,13 @@ static void dac8568_tim12_apply_sample_rate(uint32_t sample_rate_hz) {
     }
   }
 
-  uint32_t arr_plus1 = timclk_hz / (sample_rate_hz * (prescaler + 1u));
+  uint64_t denom = (uint64_t)sample_rate_hz * (uint64_t)(prescaler + 1u);
+  if (denom == 0u) {
+    denom = 1u;
+  }
+
+  /* Round-to-nearest so e.g. 102400Hz lands on ARR=2343 (ARR+1=2344) at 240MHz. */
+  uint32_t arr_plus1 = (uint32_t)(((uint64_t)timclk_hz + (denom / 2u)) / denom);
   if (arr_plus1 == 0u) {
     arr_plus1 = 1u;
   }
