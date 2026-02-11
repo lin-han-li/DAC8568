@@ -456,7 +456,17 @@ void LVGL_Task(void *argument)
     /* === 临界区结束 === */
 
     /* 低频监测 LVGL 线程栈水位（观察是否逼近溢出） */
-    /* LVGL diagnostics disabled (periodic stack/heap prints). */
+    TickType_t now = xTaskGetTickCount();
+    if ((now - last_log) > pdMS_TO_TICKS(2000)) {
+      UBaseType_t hw = uxTaskGetStackHighWaterMark(NULL);
+      if (hw < min_hw) {
+        min_hw = hw;
+        printf("[LVGL] stack HW=%lu words, freeHeap=%lu\r\n",
+               (unsigned long)hw,
+               (unsigned long)xPortGetFreeHeapSize());
+      }
+      last_log = now;
+    }
 
     //    /* 周期延时（关键性能参数）*/
     osDelay(LV_DEF_REFR_PERIOD + 1); // 保持屏幕刷新率稳定（典型值30ms≈33FPS）

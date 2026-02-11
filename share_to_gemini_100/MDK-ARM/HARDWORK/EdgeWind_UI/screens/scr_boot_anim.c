@@ -624,7 +624,7 @@ static void create_logo_area(void)
     const int32_t progress_w = compact ? (SCREEN_W - 104) : 170;
     const int32_t progress_y = compact ? 12 : 30;
     const int32_t btn_w = compact ? (SCREEN_W - 120) : 148;
-    const int32_t btn_h = compact ? 30 : 36;
+    const int32_t btn_h = compact ? 26 : 36;
     const int32_t btn_y = compact ? -12 : -60;
 
     /* Logo 容器 */
@@ -796,13 +796,6 @@ static void create_logo_area(void)
         lv_obj_set_style_shadow_width(ew_boot_anim.recover_btn, compact ? 8 : 16, 0);
         lv_obj_set_style_shadow_color(ew_boot_anim.recover_btn, BOOT_COLOR_CYAN, 0);
         lv_obj_set_style_shadow_opa(ew_boot_anim.recover_btn, LV_OPA_50, 0);
-        /* 选中/聚焦效果：更亮的描边 + 外发光 */
-        lv_obj_set_style_border_width(ew_boot_anim.recover_btn, 3, LV_STATE_FOCUSED);
-        lv_obj_set_style_border_color(ew_boot_anim.recover_btn, lv_color_hex(0x00FFF0), LV_STATE_FOCUSED);
-        lv_obj_set_style_outline_width(ew_boot_anim.recover_btn, 3, LV_STATE_FOCUSED);
-        lv_obj_set_style_outline_pad(ew_boot_anim.recover_btn, 2, LV_STATE_FOCUSED);
-        lv_obj_set_style_outline_color(ew_boot_anim.recover_btn, lv_color_hex(0x00FFF0), LV_STATE_FOCUSED);
-        lv_obj_set_style_outline_opa(ew_boot_anim.recover_btn, LV_OPA_80, LV_STATE_FOCUSED);
         /* 按下效果 */
         lv_obj_set_style_bg_color(ew_boot_anim.recover_btn, BOOT_COLOR_CYAN, LV_STATE_PRESSED);
         lv_obj_set_style_bg_opa(ew_boot_anim.recover_btn, LV_OPA_30, LV_STATE_PRESSED);
@@ -811,7 +804,7 @@ static void create_logo_area(void)
         ew_boot_anim.recover_btn_label = lv_label_create(ew_boot_anim.recover_btn);
         lv_label_set_text(ew_boot_anim.recover_btn_label, "DAC 恢 复");
         lv_obj_center(ew_boot_anim.recover_btn_label);
-        lv_obj_set_style_text_font(ew_boot_anim.recover_btn_label, EW_FONT_CN_12, 0);
+        lv_obj_set_style_text_font(ew_boot_anim.recover_btn_label, compact ? &lv_font_montserrat_12 : EW_FONT_CN_NORMAL, 0);
         lv_obj_set_style_text_color(ew_boot_anim.recover_btn_label, BOOT_COLOR_WHITE, 0);
         /* 初始隐藏 */
         lv_obj_set_style_opa(ew_boot_anim.recover_btn, LV_OPA_TRANSP, 0);
@@ -831,13 +824,6 @@ static void create_logo_area(void)
     lv_obj_set_style_shadow_width(ew_boot_anim.enter_btn, compact ? 10 : 20, 0);
     lv_obj_set_style_shadow_color(ew_boot_anim.enter_btn, BOOT_COLOR_BLUE, 0);
     lv_obj_set_style_shadow_opa(ew_boot_anim.enter_btn, LV_OPA_60, 0);
-    /* 选中/聚焦效果：更亮的描边 + 外发光 */
-    lv_obj_set_style_border_width(ew_boot_anim.enter_btn, 3, LV_STATE_FOCUSED);
-    lv_obj_set_style_border_color(ew_boot_anim.enter_btn, lv_color_hex(0x66B3FF), LV_STATE_FOCUSED);
-    lv_obj_set_style_outline_width(ew_boot_anim.enter_btn, 3, LV_STATE_FOCUSED);
-    lv_obj_set_style_outline_pad(ew_boot_anim.enter_btn, 2, LV_STATE_FOCUSED);
-    lv_obj_set_style_outline_color(ew_boot_anim.enter_btn, lv_color_hex(0x66B3FF), LV_STATE_FOCUSED);
-    lv_obj_set_style_outline_opa(ew_boot_anim.enter_btn, LV_OPA_80, LV_STATE_FOCUSED);
     /* 按下效果 */
     lv_obj_set_style_bg_color(ew_boot_anim.enter_btn, BOOT_COLOR_BLUE, LV_STATE_PRESSED);
     lv_obj_set_style_bg_opa(ew_boot_anim.enter_btn, LV_OPA_30, LV_STATE_PRESSED);
@@ -846,7 +832,7 @@ static void create_logo_area(void)
     ew_boot_anim.enter_btn_label = lv_label_create(ew_boot_anim.enter_btn);
     lv_label_set_text(ew_boot_anim.enter_btn_label, "进 入 系 统");
     lv_obj_center(ew_boot_anim.enter_btn_label);
-    lv_obj_set_style_text_font(ew_boot_anim.enter_btn_label, EW_FONT_CN_12, 0);
+    lv_obj_set_style_text_font(ew_boot_anim.enter_btn_label, compact ? &lv_font_montserrat_12 : EW_FONT_CN_NORMAL, 0);
     lv_obj_set_style_text_color(ew_boot_anim.enter_btn_label, BOOT_COLOR_WHITE, 0);
     /* 初始隐藏 */
     lv_obj_set_style_opa(ew_boot_anim.enter_btn, LV_OPA_TRANSP, 0);

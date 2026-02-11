@@ -65,11 +65,6 @@ void lv_port_disp_init(void)
         s_disp_buf_2,
         sizeof(s_disp_buf_1),
         LV_DISPLAY_RENDER_MODE_PARTIAL);
-
-#if LV_USE_SYSMON
-    /* Disable on-screen performance/memory monitors (FPS/CPU/heap overlay). */
-    lv_sysmon_hide_performance(disp);
-#endif
 }
 
 void disp_enable_update(void)
