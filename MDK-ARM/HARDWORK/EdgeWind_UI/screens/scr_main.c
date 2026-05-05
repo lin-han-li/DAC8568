@@ -172,7 +172,7 @@ static lv_obj_t * create_footer(lv_obj_t * parent, lv_obj_t ** out_time_label, l
         lv_obj_set_style_text_color(log, lv_color_hex(0x3498DB), 0);
         lv_obj_set_style_text_align(log, LV_TEXT_ALIGN_CENTER, 0);
     }
-    lv_label_set_long_mode(log, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_label_set_long_mode(log, LV_LABEL_LONG_DOT);
     lv_label_set_text(log, (s_last_log[0] != '\0') ? s_last_log : EW_UI_DEFAULT_LOG);
 
     lv_obj_t * right = lv_label_create(footer);
@@ -455,14 +455,31 @@ static void placeholder_action_event_cb(lv_event_t *e)
     case PLACEHOLDER_ACT_TRIGGER: {
         bool ok = DAC_FaultBurst_Trigger((uint32_t)s_placeholder_fault_id, dur);
         if (!ok) {
+            uint32_t ready_mask = 0u;
+            uint8_t active_fault = 0xFFu;
+            uint32_t remaining_s = 0u;
+            bool wave_ready = false;
+
+            DAC_FaultBurst_GetUiState(&ready_mask, &active_fault, &remaining_s);
+            (void)active_fault;
+            (void)remaining_s;
+            wave_ready = ((ready_mask & 0x1u) != 0u) &&
+                         ((ready_mask & (1u << (uint32_t)(s_placeholder_fault_id + 1u))) != 0u);
             if (s_placeholder_status_main_lbl) lv_label_set_text(s_placeholder_status_main_lbl, "触发失败");
-            if (s_placeholder_status_sub_lbl) lv_label_set_text(s_placeholder_status_sub_lbl, "波形未就绪");
+            if (s_placeholder_status_sub_lbl) lv_label_set_text(s_placeholder_status_sub_lbl, wave_ready ? "系统忙，请稍后" : "波形未就绪");
+            return;
         }
         break;
     }
-    case PLACEHOLDER_ACT_STOP:
-        DAC_FaultBurst_Stop();
+    case PLACEHOLDER_ACT_STOP: {
+        bool ok = DAC_FaultBurst_Stop();
+        if (!ok) {
+            if (s_placeholder_status_main_lbl) lv_label_set_text(s_placeholder_status_main_lbl, "停止失败");
+            if (s_placeholder_status_sub_lbl) lv_label_set_text(s_placeholder_status_sub_lbl, "系统未就绪");
+            return;
+        }
         break;
+    }
     default:
         break;
     }

@@ -280,6 +280,14 @@ static int8_t W25Q256_SelfTest_CrossPageAndSector(void)
 #define DAC_FAULT_CMD_NONE    0u
 #define DAC_FAULT_CMD_TRIGGER 1u
 #define DAC_FAULT_CMD_STOP    2u
+#define DAC_FAULT_CMD_QUEUE_LEN 8u
+
+typedef struct {
+  uint8_t type;
+  uint8_t fault_id_0_5;
+  uint16_t reserved;
+  uint32_t duration_s;
+} DacFaultCommand_t;
 
 static SD_DacWaveInfo_t s_dac_wave_info[DAC_WAVE_PART_COUNT];
 static uint32_t s_dac_wave_ready_mask = 0u;    /* bit i => partition i header ok */
@@ -291,10 +299,10 @@ static volatile uint8_t s_dac_stream_started = 0u;
 static volatile uint8_t s_fault_active_id_0_5 = 0xFFu; /* 0xFF => normal */
 static volatile TickType_t s_fault_end_tick = 0;
 static volatile uint32_t s_fault_remaining_s = 0u;
-static volatile uint8_t s_fault_cmd_pending = 0u;
-static volatile uint8_t s_fault_cmd_type = DAC_FAULT_CMD_NONE;
-static volatile uint8_t s_fault_cmd_id_0_5 = 0xFFu;
-static volatile uint32_t s_fault_cmd_duration_s = 0u;
+static DacFaultCommand_t s_fault_cmd_queue[DAC_FAULT_CMD_QUEUE_LEN];
+static volatile uint8_t s_fault_cmd_head = 0u;
+static volatile uint8_t s_fault_cmd_tail = 0u;
+static volatile uint8_t s_fault_cmd_count = 0u;
 
 static const char * const s_dac_wave_sd_paths[DAC_WAVE_PART_COUNT] = {
   DAC_WAVE_SD_PATH_NORMAL,
@@ -335,7 +343,10 @@ extern const osMutexAttr_t Thread_Mutex_attr;
 static void dac_fault_burst_service(void);
 static bool dac_fault_apply_trigger(uint32_t fault_id_0_5, uint32_t duration_s);
 static void dac_fault_apply_stop(void);
-static void dac_fault_post_command(uint8_t cmd_type, uint8_t fault_id_0_5, uint32_t duration_s);
+static void dac_fault_queue_reset(void);
+static bool dac_fault_post_command(uint8_t cmd_type, uint8_t fault_id_0_5, uint32_t duration_s);
+static bool dac_fault_fetch_command(DacFaultCommand_t *cmd_out);
+static bool dac_wave_accept_partition(uint32_t index, SD_DacWavePartition_t part, const SD_DacWaveInfo_t *info);
 
 /* USER CODE END FunctionPrototypes */
 
@@ -529,10 +540,7 @@ void Main_Task(void *argument)
   s_fault_active_id_0_5 = 0xFFu;
   s_fault_end_tick = 0;
   s_fault_remaining_s = 0u;
-  s_fault_cmd_pending = 0u;
-  s_fault_cmd_type = DAC_FAULT_CMD_NONE;
-  s_fault_cmd_id_0_5 = 0xFFu;
-  s_fault_cmd_duration_s = 0u;
+  dac_fault_queue_reset();
 
   /* NOTE: FatFs SD driver (FATFS/Target/sd_diskio.c) gates SD_initialize() on
    * osKernelRunning(), so SD mount/sync must happen after scheduler start. */
@@ -555,10 +563,9 @@ void Main_Task(void *argument)
              (unsigned long)DAC_WAVE_PART_COUNT,
              SD_Wave_GetPartitionName(part));
 
-      if (SD_Wave_SyncDacToQspiPartition(path, part, &info)) {
-        s_dac_wave_ready_mask |= (1u << i);
+      if (SD_Wave_SyncDacToQspiPartition(path, part, &info) &&
+          dac_wave_accept_partition(i, part, &info)) {
         s_dac_wave_sd_sync_mask |= (1u << i);
-        s_dac_wave_info[i] = info;
         continue;
       }
 
@@ -572,9 +579,8 @@ void Main_Task(void *argument)
              SD_Wave_GetPartitionName(part));
     }
 
-    if (SD_Wave_LoadDacInfoFromQspiPartition(part, &info)) {
-      s_dac_wave_ready_mask |= (1u << i);
-      s_dac_wave_info[i] = info;
+    if (SD_Wave_LoadDacInfoFromQspiPartition(part, &info) &&
+        dac_wave_accept_partition(i, part, &info)) {
       printf("[DAC WAVE] load from QSPI ok: part=%s sps=%lu count=%lu addr=0x%08lX\r\n",
              SD_Wave_GetPartitionName(part),
              (unsigned long)info.sample_rate_hz,
@@ -706,6 +712,35 @@ static bool dac_wave_partition_ready(uint8_t partition)
   return true;
 }
 
+static bool dac_wave_accept_partition(uint32_t index, SD_DacWavePartition_t part, const SD_DacWaveInfo_t *info)
+{
+  uint32_t safe_samples = 0u;
+
+  if ((info == NULL) || (index >= DAC_WAVE_PART_COUNT)) {
+    return false;
+  }
+
+  safe_samples = DAC8568_DMA_GetQspiSafeSamples(info->qspi_mmap_addr, info->sample_count);
+  printf("[DAC WAVE] partition check: part=%s(%lu) header_count=%lu safe_samples=%lu addr=0x%08lX\r\n",
+         SD_Wave_GetPartitionName(part),
+         (unsigned long)part,
+         (unsigned long)info->sample_count,
+         (unsigned long)safe_samples,
+         (unsigned long)info->qspi_mmap_addr);
+
+  if (safe_samples != info->sample_count) {
+    printf("[DAC WAVE] partition rejected: part=%s header_count=%lu safe_samples=%lu\r\n",
+           SD_Wave_GetPartitionName(part),
+           (unsigned long)info->sample_count,
+           (unsigned long)safe_samples);
+    return false;
+  }
+
+  s_dac_wave_info[index] = *info;
+  s_dac_wave_ready_mask |= (1u << index);
+  return true;
+}
+
 bool DAC_Wave_IsBootReady(void)
 {
   return (s_dac_wave_boot_sync_done != 0u) &&
@@ -713,17 +748,88 @@ bool DAC_Wave_IsBootReady(void)
          dac_wave_partition_ready(0u);
 }
 
-static void dac_fault_post_command(uint8_t cmd_type, uint8_t fault_id_0_5, uint32_t duration_s)
+static void dac_fault_queue_reset(void)
 {
   uint32_t primask = __get_PRIMASK();
+
   __disable_irq();
-  s_fault_cmd_type = cmd_type;
-  s_fault_cmd_id_0_5 = fault_id_0_5;
-  s_fault_cmd_duration_s = duration_s;
-  s_fault_cmd_pending = 1u;
+  s_fault_cmd_head = 0u;
+  s_fault_cmd_tail = 0u;
+  s_fault_cmd_count = 0u;
   if (primask == 0u) {
     __enable_irq();
   }
+}
+
+static bool dac_fault_post_command(uint8_t cmd_type, uint8_t fault_id_0_5, uint32_t duration_s)
+{
+  uint32_t primask = 0u;
+  uint8_t tail = 0u;
+  bool posted = false;
+
+  if ((cmd_type != DAC_FAULT_CMD_TRIGGER) && (cmd_type != DAC_FAULT_CMD_STOP)) {
+    return false;
+  }
+
+  primask = __get_PRIMASK();
+  __disable_irq();
+
+  if (cmd_type == DAC_FAULT_CMD_STOP) {
+    s_fault_cmd_head = 0u;
+    s_fault_cmd_tail = 0u;
+    s_fault_cmd_count = 0u;
+  }
+
+  if (s_fault_cmd_count < DAC_FAULT_CMD_QUEUE_LEN) {
+    tail = s_fault_cmd_tail;
+    s_fault_cmd_queue[tail].type = cmd_type;
+    s_fault_cmd_queue[tail].fault_id_0_5 = fault_id_0_5;
+    s_fault_cmd_queue[tail].reserved = 0u;
+    s_fault_cmd_queue[tail].duration_s = duration_s;
+    tail++;
+    if (tail >= DAC_FAULT_CMD_QUEUE_LEN) {
+      tail = 0u;
+    }
+    s_fault_cmd_tail = tail;
+    s_fault_cmd_count++;
+    posted = true;
+  }
+
+  if (primask == 0u) {
+    __enable_irq();
+  }
+
+  return posted;
+}
+
+static bool dac_fault_fetch_command(DacFaultCommand_t *cmd_out)
+{
+  uint32_t primask = 0u;
+  uint8_t head = 0u;
+  bool fetched = false;
+
+  if (cmd_out == NULL) {
+    return false;
+  }
+
+  primask = __get_PRIMASK();
+  __disable_irq();
+  if (s_fault_cmd_count > 0u) {
+    head = s_fault_cmd_head;
+    *cmd_out = s_fault_cmd_queue[head];
+    head++;
+    if (head >= DAC_FAULT_CMD_QUEUE_LEN) {
+      head = 0u;
+    }
+    s_fault_cmd_head = head;
+    s_fault_cmd_count--;
+    fetched = true;
+  }
+  if (primask == 0u) {
+    __enable_irq();
+  }
+
+  return fetched;
 }
 
 static bool dac_fault_apply_trigger(uint32_t fault_id_0_5, uint32_t duration_s)
@@ -815,19 +921,28 @@ bool DAC_FaultBurst_Trigger(uint32_t fault_id_0_5, uint32_t duration_s)
   if (!dac_wave_partition_ready(0u) || !dac_wave_partition_ready(partition)) {
     return false;
   }
-  dac_fault_post_command(DAC_FAULT_CMD_TRIGGER, (uint8_t)fault_id_0_5, duration_s);
+  if (!dac_fault_post_command(DAC_FAULT_CMD_TRIGGER, (uint8_t)fault_id_0_5, duration_s)) {
+    printf("[DAC BURST] command queue full: trigger id=%lu dur=%lus\r\n",
+           (unsigned long)fault_id_0_5,
+           (unsigned long)duration_s);
+    return false;
+  }
   return true;
 }
 
-void DAC_FaultBurst_Stop(void)
+bool DAC_FaultBurst_Stop(void)
 {
   if (s_dac_wave_boot_sync_done == 0u || s_dac_stream_started == 0u) {
-    return;
+    return false;
   }
   if (!dac_wave_partition_ready(0u)) {
-    return;
+    return false;
   }
-  dac_fault_post_command(DAC_FAULT_CMD_STOP, 0xFFu, 0u);
+  if (!dac_fault_post_command(DAC_FAULT_CMD_STOP, 0xFFu, 0u)) {
+    printf("[DAC BURST] command queue full: stop\r\n");
+    return false;
+  }
+  return true;
 }
 
 void DAC_FaultBurst_GetUiState(uint32_t *ready_mask, uint8_t *active_fault_id_0_5, uint32_t *remaining_s)
@@ -858,35 +973,20 @@ void DAC_FaultBurst_GetUiState(uint32_t *ready_mask, uint8_t *active_fault_id_0_
 
 static void dac_fault_burst_service(void)
 {
-  if (s_fault_cmd_pending != 0u) {
-    uint8_t cmd = DAC_FAULT_CMD_NONE;
-    uint8_t fault_id = 0xFFu;
-    uint32_t dur_s = 0u;
-    uint32_t primask = __get_PRIMASK();
+  DacFaultCommand_t cmd = {0};
 
-    __disable_irq();
-    if (s_fault_cmd_pending != 0u) {
-      cmd = s_fault_cmd_type;
-      fault_id = s_fault_cmd_id_0_5;
-      dur_s = s_fault_cmd_duration_s;
-      s_fault_cmd_pending = 0u;
-      s_fault_cmd_type = DAC_FAULT_CMD_NONE;
-    }
-    if (primask == 0u) {
-      __enable_irq();
-    }
-
-    if (cmd == DAC_FAULT_CMD_TRIGGER) {
-      if (!dac_fault_apply_trigger((uint32_t)fault_id, dur_s)) {
+  if (dac_fault_fetch_command(&cmd)) {
+    if (cmd.type == DAC_FAULT_CMD_TRIGGER) {
+      if (!dac_fault_apply_trigger((uint32_t)cmd.fault_id_0_5, cmd.duration_s)) {
         printf("[DAC BURST] trigger rejected: id=%lu dur=%lus\r\n",
-               (unsigned long)fault_id,
-               (unsigned long)dur_s);
+               (unsigned long)cmd.fault_id_0_5,
+               (unsigned long)cmd.duration_s);
       } else {
         printf("[DAC BURST] trigger ok: id=%lu dur=%lus\r\n",
-               (unsigned long)fault_id,
-               (unsigned long)dac_fault_clamp_duration_s(dur_s));
+               (unsigned long)cmd.fault_id_0_5,
+               (unsigned long)dac_fault_clamp_duration_s(cmd.duration_s));
       }
-    } else if (cmd == DAC_FAULT_CMD_STOP) {
+    } else if (cmd.type == DAC_FAULT_CMD_STOP) {
       dac_fault_apply_stop();
       printf("[DAC BURST] stop\r\n");
     }

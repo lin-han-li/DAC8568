@@ -389,6 +389,10 @@ static uint32_t dac8568_qspi_safe_samples(uint32_t qspi_mmap_addr, uint32_t requ
   return requested_samples;
 }
 
+uint32_t DAC8568_DMA_GetQspiSafeSamples(uint32_t qspi_mmap_addr, uint32_t requested_samples) {
+  return dac8568_qspi_safe_samples(qspi_mmap_addr, requested_samples);
+}
+
 static void dac8568_fill_samples(uint32_t *dst, uint32_t sample_count) {
   uint32_t *dst_base = dst;
   uint32_t phase_a = g_phase_a;
@@ -754,6 +758,9 @@ int32_t DAC8568_DMA_UseQspiWave(uint32_t qspi_mmap_addr, uint32_t sample_count,
   if (safe_samples == 0u) {
     return -4;
   }
+  if (safe_samples != sample_count) {
+    return -6;
+  }
   if (!dac8568_qspi_ready_for_playback()) {
     return -5;
   }
@@ -799,6 +806,9 @@ int32_t DAC8568_DMA_RequestQspiWave(uint8_t source_id, uint32_t qspi_mmap_addr,
   safe_samples = dac8568_qspi_safe_samples(qspi_mmap_addr, sample_count);
   if (safe_samples == 0u) {
     return -4;
+  }
+  if (safe_samples != sample_count) {
+    return -6;
   }
   if (!dac8568_qspi_ready_for_playback()) {
     return -5;

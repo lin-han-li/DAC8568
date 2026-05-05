@@ -41,7 +41,9 @@ VOUT_MAX = 5.0
 VOUT_MIN = -5.0
 
 PARTITION_BYTES = 4 * 1024 * 1024
-FULL_SAMPLE_COUNT = (PARTITION_BYTES - DATA_OFFSET) // (CHANNELS * 2)  # 4ch x uint16
+QSPI_TAIL_GUARD_BYTES = 64 * 1024
+PLAYABLE_BYTES = PARTITION_BYTES - QSPI_TAIL_GUARD_BYTES
+FULL_SAMPLE_COUNT = (PLAYABLE_BYTES - DATA_OFFSET) // (CHANNELS * 2)  # 4ch x uint16
 
 
 def voltage_to_code(voltage: float) -> int:
@@ -410,8 +412,8 @@ def write_bin(path: str, sample_rate: int, sample_count: int, func: Callable[[in
     os.makedirs(os.path.dirname(path), exist_ok=True)
 
     data_bytes = sample_count * CHANNELS * 2
-    if DATA_OFFSET + data_bytes != PARTITION_BYTES:
-        raise ValueError("size mismatch: header+data != 4MB partition")
+    if DATA_OFFSET + data_bytes > PLAYABLE_BYTES:
+        raise ValueError("size mismatch: header+data exceeds QSPI safe playback area")
 
     rng = XorShift32(seed=0xA5A5A5A5)
     checksum = 2166136261
@@ -436,6 +438,17 @@ def write_bin(path: str, sample_rate: int, sample_count: int, func: Callable[[in
                 ))
             checksum = checksum_update(checksum, out)
             f.write(out)
+
+        pad_bytes = PARTITION_BYTES - (DATA_OFFSET + data_bytes)
+        if pad_bytes < 0:
+            raise RuntimeError("negative pad size")
+        if pad_bytes:
+            zero = b"\x00" * 4096
+            remaining = pad_bytes
+            while remaining > 0:
+                n = min(remaining, len(zero))
+                f.write(zero[:n])
+                remaining -= n
 
         # Write final header
         header = struct.pack(
@@ -489,6 +502,8 @@ def main() -> int:
     print("Done.")
     print(f"SampleRate: {sample_rate}")
     print(f"SampleCount: {sample_count}")
+    print(f"PlayableBytes: {PLAYABLE_BYTES}")
+    print(f"TailGuardBytes: {QSPI_TAIL_GUARD_BYTES}")
     print(f"EachFileBytes: {PARTITION_BYTES}")
     return 0
 

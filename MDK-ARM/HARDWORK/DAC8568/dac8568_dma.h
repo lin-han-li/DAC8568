@@ -32,9 +32,10 @@ void DAC8568_DMA_GetHealth(uint32_t *recover_count, uint32_t *recover_reason,
                            uint32_t *ref_rearm_count, uint32_t *ref_refresh_count,
                            uint32_t *stagnant_count);
 int32_t DAC8568_DMA_UseQspiWave(uint32_t qspi_mmap_addr, uint32_t sample_count,
-                                uint32_t sample_rate_hz);
+                                 uint32_t sample_rate_hz);
 int32_t DAC8568_DMA_RequestQspiWave(uint8_t source_id, uint32_t qspi_mmap_addr,
-                                   uint32_t sample_count, bool reset_index);
+                                    uint32_t sample_count, bool reset_index);
+uint32_t DAC8568_DMA_GetQspiSafeSamples(uint32_t qspi_mmap_addr, uint32_t requested_samples);
 uint8_t DAC8568_DMA_GetActiveQspiSource(void);
 void DAC8568_DMA_UseBuiltInWave(void);
 DAC8568_SourceMode_t DAC8568_DMA_GetSourceMode(void);
