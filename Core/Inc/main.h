@@ -65,10 +65,6 @@ bool DAC_Wave_IsBootReady(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define ESP8266_RX_Pin GPIO_PIN_5
-#define ESP8266_RX_GPIO_Port GPIOD
-#define ESP8266_TX_Pin GPIO_PIN_6
-#define ESP8266_TX_GPIO_Port GPIOD
 #define DC_Pin GPIO_PIN_12
 #define DC_GPIO_Port GPIOG
 #define DAC8568_CLR_Pin GPIO_PIN_9

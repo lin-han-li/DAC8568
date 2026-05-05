@@ -327,14 +327,6 @@ const osThreadAttr_t Main_attributes = {
   .stack_size = 8192 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
-/* Definitions for ESP8266 */
-osThreadId_t ESP8266Handle;
-const osThreadAttr_t ESP8266_attributes = {
-  .name = "ESP8266",
-  .stack_size = 5128 * 4,
-  .priority = (osPriority_t) osPriorityAboveNormal,
-};
-
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
 extern const osMutexAttr_t Thread_Mutex_attr;
@@ -349,7 +341,6 @@ static void dac_fault_post_command(uint8_t cmd_type, uint8_t fault_id_0_5, uint3
 void LVGL_Task(void *argument);
 void LED_Task(void *argument);
 void Main_Task(void *argument);
-void ESP8266_Task(void *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -405,9 +396,6 @@ void MX_FREERTOS_Init(void) {
 
   /* creation of Main */
   MainHandle = osThreadNew(Main_Task, NULL, &Main_attributes);
-
-  /* creation of ESP8266 */
-  ESP8266Handle = osThreadNew(ESP8266_Task, NULL, &ESP8266_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -647,24 +635,6 @@ void Main_Task(void *argument)
     osDelay(5);
   }
   /* USER CODE END Main_Task */
-}
-
-/* USER CODE BEGIN Header_ESP8266_Task */
-/**
-* @brief Function implementing the ESP8266 thread.
-* @param argument: Not used
-* @retval None
-*/
-/* USER CODE END Header_ESP8266_Task */
-void ESP8266_Task(void *argument)
-{
-  /* USER CODE BEGIN ESP8266_Task */
-  /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
-  /* USER CODE END ESP8266_Task */
 }
 
 /* Private application code --------------------------------------------------*/

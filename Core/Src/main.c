@@ -147,7 +147,6 @@ int main(void)
   MX_FATFS_Init();
   MX_RTC_Init();
   MX_TIM16_Init();
-  MX_USART2_UART_Init();
   MX_QUADSPI_Init();
   MX_SPI1_Init();
   MX_TIM12_Init();

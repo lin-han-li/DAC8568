@@ -320,9 +320,16 @@ bool SD_Wave_SyncDacToQspiPartition(const char *sd_path, SD_DacWavePartition_t p
 	flash_total = hdr.data_offset + hdr.data_bytes;
 	erase_end = partition_base + ((flash_total + (SD_DAC_WAVE_ERASE_UNIT - 1u)) & ~(SD_DAC_WAVE_ERASE_UNIT - 1u));
 
+	if (QSPI_W25Qxx_BeginCommandMode() != QSPI_W25Qxx_OK) {
+		(void)f_close(&fil);
+		printf("[WAVE] QSPI busy, stop DAC QSPI playback before sync\r\n");
+		return false;
+	}
+
 	/* Ensure QSPI is not left in memory-mapped mode from previous partition. */
 	(void)QSPI_W25Qxx_ExitMemoryMapped();
 	if (QSPI_W25Qxx_Init() != QSPI_W25Qxx_OK) {
+		QSPI_W25Qxx_EndCommandMode();
 		(void)f_close(&fil);
 		printf("[WAVE] QSPI init failed\r\n");
 		return false;
@@ -331,6 +338,7 @@ bool SD_Wave_SyncDacToQspiPartition(const char *sd_path, SD_DacWavePartition_t p
 
 	for (uint32_t addr = partition_base; addr < erase_end; addr += SD_DAC_WAVE_ERASE_UNIT) {
 		if (QSPI_W25Qxx_BlockErase_64K(addr) != QSPI_W25Qxx_OK) {
+			QSPI_W25Qxx_EndCommandMode();
 			(void)f_close(&fil);
 			printf("[WAVE] erase failed @0x%08lX\r\n", (unsigned long)addr);
 			return false;
@@ -338,6 +346,7 @@ bool SD_Wave_SyncDacToQspiPartition(const char *sd_path, SD_DacWavePartition_t p
 	}
 
 	if (QSPI_W25Qxx_WriteBuffer_Slow((uint8_t *)&hdr, partition_base, sizeof(hdr)) != QSPI_W25Qxx_OK) {
+		QSPI_W25Qxx_EndCommandMode();
 		(void)f_close(&fil);
 		printf("[WAVE] write header failed\r\n");
 		return false;
@@ -345,6 +354,7 @@ bool SD_Wave_SyncDacToQspiPartition(const char *sd_path, SD_DacWavePartition_t p
 
 	fres = f_lseek(&fil, hdr.data_offset);
 	if (fres != FR_OK) {
+		QSPI_W25Qxx_EndCommandMode();
 		(void)f_close(&fil);
 		printf("[WAVE] seek data failed (%d)\r\n", (int)fres);
 		return false;
@@ -358,12 +368,14 @@ bool SD_Wave_SyncDacToQspiPartition(const char *sd_path, SD_DacWavePartition_t p
 
 		fres = f_read(&fil, io_buf, req, &br);
 		if (fres != FR_OK || br == 0u) {
+			QSPI_W25Qxx_EndCommandMode();
 			(void)f_close(&fil);
 			printf("[WAVE] read data failed (%d)\r\n", (int)fres);
 			return false;
 		}
 
 		if (QSPI_W25Qxx_WriteBuffer_Slow(io_buf, partition_base + hdr.data_offset + written, br) != QSPI_W25Qxx_OK) {
+			QSPI_W25Qxx_EndCommandMode();
 			(void)f_close(&fil);
 			printf("[WAVE] write data failed @%lu\r\n", (unsigned long)written);
 			return false;
@@ -375,6 +387,7 @@ bool SD_Wave_SyncDacToQspiPartition(const char *sd_path, SD_DacWavePartition_t p
 	(void)f_close(&fil);
 
 	if (written != hdr.data_bytes || checksum != hdr.checksum) {
+		QSPI_W25Qxx_EndCommandMode();
 		printf("[WAVE] checksum mismatch exp=0x%08lX got=0x%08lX\r\n",
 		       (unsigned long)hdr.checksum, (unsigned long)checksum);
 		return false;
@@ -383,19 +396,23 @@ bool SD_Wave_SyncDacToQspiPartition(const char *sd_path, SD_DacWavePartition_t p
 	{
 		SD_DacWaveHeader_t check_hdr = {0};
 		if (QSPI_W25Qxx_ReadBuffer_Slow((uint8_t *)&check_hdr, partition_base, sizeof(check_hdr)) != QSPI_W25Qxx_OK) {
+			QSPI_W25Qxx_EndCommandMode();
 			printf("[WAVE] readback header failed\r\n");
 			return false;
 		}
 		if (memcmp(&check_hdr, &hdr, sizeof(hdr)) != 0) {
+			QSPI_W25Qxx_EndCommandMode();
 			printf("[WAVE] readback header mismatch\r\n");
 			return false;
 		}
 	}
 
 	if (QSPI_W25Qxx_EnterMemoryMapped() != QSPI_W25Qxx_OK) {
+		QSPI_W25Qxx_EndCommandMode();
 		printf("[WAVE] enter memory-mapped failed\r\n");
 		return false;
 	}
+	QSPI_W25Qxx_EndCommandMode();
 
 	sd_dac_wave_info_from_header(&hdr, partition_base, partition, info);
 	printf("[WAVE] sync ok: part=%s(%lu) sps=%lu count=%lu addr=0x%08lX\r\n",
@@ -421,21 +438,29 @@ bool SD_Wave_LoadDacInfoFromQspiPartition(SD_DacWavePartition_t partition, SD_Da
 	memset(info, 0, sizeof(*info));
 	partition_base = SD_Wave_GetPartitionBaseOffset(partition);
 
+	if (QSPI_W25Qxx_BeginCommandMode() != QSPI_W25Qxx_OK) {
+		return false;
+	}
 	(void)QSPI_W25Qxx_ExitMemoryMapped();
 	if (QSPI_W25Qxx_Init() != QSPI_W25Qxx_OK) {
+		QSPI_W25Qxx_EndCommandMode();
 		return false;
 	}
 	(void)QSPI_W25Qxx_ExitMemoryMapped();
 
 	if (QSPI_W25Qxx_ReadBuffer_Slow((uint8_t *)&hdr, partition_base, sizeof(hdr)) != QSPI_W25Qxx_OK) {
+		QSPI_W25Qxx_EndCommandMode();
 		return false;
 	}
 	if (!sd_dac_wave_header_valid(&hdr, SD_DAC_QSPI_PARTITION_SIZE)) {
+		QSPI_W25Qxx_EndCommandMode();
 		return false;
 	}
 	if (QSPI_W25Qxx_EnterMemoryMapped() != QSPI_W25Qxx_OK) {
+		QSPI_W25Qxx_EndCommandMode();
 		return false;
 	}
+	QSPI_W25Qxx_EndCommandMode();
 
 	sd_dac_wave_info_from_header(&hdr, partition_base, partition, info);
 	return true;

@@ -19,16 +19,20 @@ void setup_scr_WifiConfig(lv_ui *ui) {
 
   // Write style for WifiConfig
   lv_obj_set_style_bg_opa(ui->WifiConfig, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_bg_color(ui->WifiConfig, lv_color_hex(0x65adff),
+  lv_obj_set_style_bg_color(ui->WifiConfig, lv_color_hex(0x0f172a),
                             LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_bg_grad_dir(ui->WifiConfig, LV_GRAD_DIR_VER,
+                               LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_bg_grad_color(ui->WifiConfig, lv_color_hex(0x1e293b),
+                                 LV_PART_MAIN | LV_STATE_DEFAULT);
 
   // Write codes header (match Main_x header)
   lv_obj_t *header = lv_obj_create(ui->WifiConfig);
   lv_obj_set_size(header, 320, 30);
   lv_obj_set_pos(header, 0, 0);
-  lv_obj_set_style_bg_opa(header, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_border_width(header, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_radius(header, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_bg_color(header, lv_color_hex(0x000000),
+                            LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_bg_opa(header, 80, LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_scrollbar_mode(header, LV_SCROLLBAR_MODE_OFF);
   lv_obj_clear_flag(header, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -37,7 +41,7 @@ void setup_scr_WifiConfig(lv_ui *ui) {
   lv_obj_set_width(ui->WifiConfig_lbl_title, 300);
   lv_label_set_long_mode(ui->WifiConfig_lbl_title, LV_LABEL_LONG_CLIP);
   lv_label_set_text(ui->WifiConfig_lbl_title, "网络配置(WiFi)");
-  lv_obj_set_style_text_color(ui->WifiConfig_lbl_title, lv_color_hex(0xFFFFFF),
+  lv_obj_set_style_text_color(ui->WifiConfig_lbl_title, lv_color_hex(0x38BDF8),
                               LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_text_font(ui->WifiConfig_lbl_title, gui_assets_get_font_16(),
                              LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -50,18 +54,23 @@ void setup_scr_WifiConfig(lv_ui *ui) {
   lv_obj_set_scrollbar_mode(ui->WifiConfig_cont_panel, LV_SCROLLBAR_MODE_OFF);
   lv_obj_set_style_bg_color(ui->WifiConfig_cont_panel, lv_color_hex(0xFFFFFF),
                             LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_bg_opa(ui->WifiConfig_cont_panel, 230,
+  lv_obj_set_style_bg_opa(ui->WifiConfig_cont_panel, 15,
                           LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_radius(ui->WifiConfig_cont_panel, 8,
+  lv_obj_set_style_radius(ui->WifiConfig_cont_panel, 12,
                           LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_border_width(ui->WifiConfig_cont_panel, 0,
+  lv_obj_set_style_border_width(ui->WifiConfig_cont_panel, 1,
                                 LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_border_color(ui->WifiConfig_cont_panel,
+                                lv_color_hex(0xFFFFFF),
+                                LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_border_opa(ui->WifiConfig_cont_panel, 30,
+                              LV_PART_MAIN | LV_STATE_DEFAULT);
 
   // Write codes WifiConfig_lbl_ssid
   ui->WifiConfig_lbl_ssid = lv_label_create(ui->WifiConfig_cont_panel);
   lv_obj_set_pos(ui->WifiConfig_lbl_ssid, 8, 5);
   lv_label_set_text(ui->WifiConfig_lbl_ssid, "WiFi SSID");
-  lv_obj_set_style_text_color(ui->WifiConfig_lbl_ssid, lv_color_hex(0x2F35DA),
+  lv_obj_set_style_text_color(ui->WifiConfig_lbl_ssid, lv_color_hex(0xCBD5E1),
                               LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_text_font(ui->WifiConfig_lbl_ssid, gui_assets_get_font_12(),
                              LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -76,14 +85,18 @@ void setup_scr_WifiConfig(lv_ui *ui) {
                              LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_border_width(ui->WifiConfig_ta_ssid, 1,
                                 LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_border_color(ui->WifiConfig_ta_ssid, lv_color_hex(0xCCCCCC),
+  lv_obj_set_style_border_color(ui->WifiConfig_ta_ssid, lv_color_hex(0x475569),
                                 LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_bg_color(ui->WifiConfig_ta_ssid, lv_color_hex(0x1e293b),
+                            LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_text_color(ui->WifiConfig_ta_ssid, lv_color_hex(0xE2E8F0),
+                              LV_PART_MAIN | LV_STATE_DEFAULT);
 
   // Write codes WifiConfig_lbl_pwd
   ui->WifiConfig_lbl_pwd = lv_label_create(ui->WifiConfig_cont_panel);
   lv_obj_set_pos(ui->WifiConfig_lbl_pwd, 8, 58);
   lv_label_set_text(ui->WifiConfig_lbl_pwd, "Password");
-  lv_obj_set_style_text_color(ui->WifiConfig_lbl_pwd, lv_color_hex(0x2F35DA),
+  lv_obj_set_style_text_color(ui->WifiConfig_lbl_pwd, lv_color_hex(0xCBD5E1),
                               LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_text_font(ui->WifiConfig_lbl_pwd, gui_assets_get_font_12(),
                              LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -99,8 +112,12 @@ void setup_scr_WifiConfig(lv_ui *ui) {
                              LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_border_width(ui->WifiConfig_ta_pwd, 1,
                                 LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_border_color(ui->WifiConfig_ta_pwd, lv_color_hex(0xCCCCCC),
+  lv_obj_set_style_border_color(ui->WifiConfig_ta_pwd, lv_color_hex(0x475569),
                                 LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_bg_color(ui->WifiConfig_ta_pwd, lv_color_hex(0x1e293b),
+                            LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_text_color(ui->WifiConfig_ta_pwd, lv_color_hex(0xE2E8F0),
+                              LV_PART_MAIN | LV_STATE_DEFAULT);
 
   // Write codes WifiConfig_lbl_status (Status Hint)
   ui->WifiConfig_lbl_status = lv_label_create(ui->WifiConfig);
@@ -118,7 +135,7 @@ void setup_scr_WifiConfig(lv_ui *ui) {
   ui->WifiConfig_btn_back = lv_button_create(ui->WifiConfig);
   lv_obj_set_pos(ui->WifiConfig_btn_back, 10, 175);
   lv_obj_set_size(ui->WifiConfig_btn_back, 80, 30);
-  lv_obj_set_style_bg_color(ui->WifiConfig_btn_back, lv_color_hex(0x999999),
+  lv_obj_set_style_bg_color(ui->WifiConfig_btn_back, lv_color_hex(0x334155),
                             LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_radius(ui->WifiConfig_btn_back, 15,
                           LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -134,7 +151,7 @@ void setup_scr_WifiConfig(lv_ui *ui) {
   ui->WifiConfig_btn_scan = lv_button_create(ui->WifiConfig);
   lv_obj_set_pos(ui->WifiConfig_btn_scan, 120, 175);
   lv_obj_set_size(ui->WifiConfig_btn_scan, 80, 30);
-  lv_obj_set_style_bg_color(ui->WifiConfig_btn_scan, lv_color_hex(0xFFA500),
+  lv_obj_set_style_bg_color(ui->WifiConfig_btn_scan, lv_color_hex(0xF97316),
                             LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_radius(ui->WifiConfig_btn_scan, 15,
                           LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -150,7 +167,7 @@ void setup_scr_WifiConfig(lv_ui *ui) {
   ui->WifiConfig_btn_save = lv_button_create(ui->WifiConfig);
   lv_obj_set_pos(ui->WifiConfig_btn_save, 230, 175);
   lv_obj_set_size(ui->WifiConfig_btn_save, 80, 30);
-  lv_obj_set_style_bg_color(ui->WifiConfig_btn_save, lv_color_hex(0x3dfb00),
+  lv_obj_set_style_bg_color(ui->WifiConfig_btn_save, lv_color_hex(0x10B981),
                             LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_radius(ui->WifiConfig_btn_save, 15,
                           LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -158,7 +175,7 @@ void setup_scr_WifiConfig(lv_ui *ui) {
   ui->WifiConfig_btn_save_label = lv_label_create(ui->WifiConfig_btn_save);
   lv_label_set_text(ui->WifiConfig_btn_save_label, "保存配置");
   lv_obj_set_style_text_color(ui->WifiConfig_btn_save_label,
-                              lv_color_hex(0x2F35DA),
+                              lv_color_hex(0xFFFFFF),
                               LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_text_font(ui->WifiConfig_btn_save_label,
                              gui_assets_get_font_12(),

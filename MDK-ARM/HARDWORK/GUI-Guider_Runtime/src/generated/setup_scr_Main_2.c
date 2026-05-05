@@ -23,20 +23,38 @@ static void create_tile(lv_obj_t *parent, lv_obj_t **tile_ptr,
   lv_obj_set_grid_cell(*tile_ptr, LV_GRID_ALIGN_STRETCH, col, 1,
                        LV_GRID_ALIGN_STRETCH, row, 1);
   lv_obj_set_style_bg_color(*tile_ptr, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
-  lv_obj_set_style_bg_opa(*tile_ptr, 20, LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(*tile_ptr, 35, LV_PART_MAIN);
   lv_obj_set_style_border_width(*tile_ptr, 1, LV_PART_MAIN);
   lv_obj_set_style_border_color(*tile_ptr, lv_color_hex(0xFFFFFF),
                                 LV_PART_MAIN);
-  lv_obj_set_style_border_opa(*tile_ptr, 30, LV_PART_MAIN);
-  lv_obj_set_style_radius(*tile_ptr, 8, LV_PART_MAIN);
+  lv_obj_set_style_border_opa(*tile_ptr, 50, LV_PART_MAIN);
+  lv_obj_set_style_radius(*tile_ptr, 10, LV_PART_MAIN);
+  /* 蓝色微光阴影 */
+  lv_obj_set_style_shadow_width(*tile_ptr, 12, LV_PART_MAIN);
+  lv_obj_set_style_shadow_color(*tile_ptr, lv_color_hex(0x38BDF8),
+                                LV_PART_MAIN);
+  lv_obj_set_style_shadow_opa(*tile_ptr, 30, LV_PART_MAIN);
+  /* 按下反馈 */
+  lv_obj_set_style_bg_opa(*tile_ptr, 55, LV_STATE_PRESSED);
+  lv_obj_set_style_shadow_opa(*tile_ptr, 60, LV_STATE_PRESSED);
   lv_obj_set_scrollbar_mode(*tile_ptr, LV_SCROLLBAR_MODE_OFF);
   lv_obj_clear_flag(*tile_ptr, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(*tile_ptr, LV_OBJ_FLAG_CLICKABLE);
 
+  /* 顶部彩色指示条 */
+  lv_obj_t *accent = lv_obj_create(*tile_ptr);
+  lv_obj_set_size(accent, 30, 3);
+  lv_obj_align(accent, LV_ALIGN_TOP_MID, 0, 2);
+  lv_obj_set_style_bg_color(accent, lv_color_hex(0x38BDF8), LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(accent, 180, LV_PART_MAIN);
+  lv_obj_set_style_border_width(accent, 0, LV_PART_MAIN);
+  lv_obj_set_style_radius(accent, 2, LV_PART_MAIN);
+  lv_obj_clear_flag(accent, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+
   *img_ptr = lv_image_create(*tile_ptr);
   lv_image_set_src(*img_ptr, icon_path);
   lv_obj_set_size(*img_ptr, 40, 40);
-  lv_obj_align(*img_ptr, LV_ALIGN_CENTER, 0, -8);
+  lv_obj_align(*img_ptr, LV_ALIGN_CENTER, 0, -5);
 
   *lbl_ptr = lv_label_create(*tile_ptr);
   lv_label_set_text(*lbl_ptr, label_text);

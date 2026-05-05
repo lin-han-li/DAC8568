@@ -20,16 +20,20 @@ void setup_scr_ParamConfig(lv_ui *ui) {
   // Write style for ParamConfig
   lv_obj_set_style_bg_opa(ui->ParamConfig, 255,
                           LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_bg_color(ui->ParamConfig, lv_color_hex(0x65adff),
+  lv_obj_set_style_bg_color(ui->ParamConfig, lv_color_hex(0x0f172a),
                             LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_bg_grad_dir(ui->ParamConfig, LV_GRAD_DIR_VER,
+                               LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_bg_grad_color(ui->ParamConfig, lv_color_hex(0x1e293b),
+                                 LV_PART_MAIN | LV_STATE_DEFAULT);
 
   // Header (match Main_x header)
   lv_obj_t *header = lv_obj_create(ui->ParamConfig);
   lv_obj_set_size(header, 320, 30);
   lv_obj_set_pos(header, 0, 0);
-  lv_obj_set_style_bg_opa(header, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_border_width(header, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_radius(header, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_bg_color(header, lv_color_hex(0x000000),
+                            LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_bg_opa(header, 80, LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_scrollbar_mode(header, LV_SCROLLBAR_MODE_OFF);
   lv_obj_clear_flag(header, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -38,7 +42,7 @@ void setup_scr_ParamConfig(lv_ui *ui) {
   lv_obj_set_width(ui->ParamConfig_lbl_title, 180);
   lv_label_set_long_mode(ui->ParamConfig_lbl_title, LV_LABEL_LONG_CLIP);
   lv_label_set_text(ui->ParamConfig_lbl_title, "通讯参数配置");
-  lv_obj_set_style_text_color(ui->ParamConfig_lbl_title, lv_color_hex(0xFFFFFF),
+  lv_obj_set_style_text_color(ui->ParamConfig_lbl_title, lv_color_hex(0x38BDF8),
                               LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_text_font(ui->ParamConfig_lbl_title,
                              gui_assets_get_font_16(),
@@ -51,7 +55,7 @@ void setup_scr_ParamConfig(lv_ui *ui) {
   lv_obj_align(ui->ParamConfig_btn_wan, LV_ALIGN_RIGHT_MID, -8, 0);
   lv_obj_set_style_radius(ui->ParamConfig_btn_wan, 11,
                           LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_bg_color(ui->ParamConfig_btn_wan, lv_color_hex(0xFFA500),
+  lv_obj_set_style_bg_color(ui->ParamConfig_btn_wan, lv_color_hex(0xF97316),
                             LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_bg_opa(ui->ParamConfig_btn_wan, 255,
                           LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -60,7 +64,7 @@ void setup_scr_ParamConfig(lv_ui *ui) {
   lv_label_set_text(ui->ParamConfig_lbl_wan, "公网");
   lv_obj_set_style_text_font(ui->ParamConfig_lbl_wan, gui_assets_get_font_12(),
                              LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_text_color(ui->ParamConfig_lbl_wan, lv_color_hex(0x000000),
+  lv_obj_set_style_text_color(ui->ParamConfig_lbl_wan, lv_color_hex(0xFFFFFF),
                               LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_center(ui->ParamConfig_lbl_wan);
 
@@ -70,7 +74,7 @@ void setup_scr_ParamConfig(lv_ui *ui) {
                   LV_ALIGN_OUT_LEFT_MID, -4, 0);
   lv_obj_set_style_radius(ui->ParamConfig_btn_lan, 11,
                           LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_bg_color(ui->ParamConfig_btn_lan, lv_color_hex(0x3dfb00),
+  lv_obj_set_style_bg_color(ui->ParamConfig_btn_lan, lv_color_hex(0x10B981),
                             LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_bg_opa(ui->ParamConfig_btn_lan, 255,
                           LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -79,7 +83,7 @@ void setup_scr_ParamConfig(lv_ui *ui) {
   lv_label_set_text(ui->ParamConfig_lbl_lan, "局域网");
   lv_obj_set_style_text_font(ui->ParamConfig_lbl_lan, gui_assets_get_font_12(),
                              LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_text_color(ui->ParamConfig_lbl_lan, lv_color_hex(0x000000),
+  lv_obj_set_style_text_color(ui->ParamConfig_lbl_lan, lv_color_hex(0xFFFFFF),
                               LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_center(ui->ParamConfig_lbl_lan);
 
@@ -90,19 +94,24 @@ void setup_scr_ParamConfig(lv_ui *ui) {
   lv_obj_set_scrollbar_mode(ui->ParamConfig_cont_panel, LV_SCROLLBAR_MODE_AUTO);
   lv_obj_set_style_bg_color(ui->ParamConfig_cont_panel, lv_color_hex(0xFFFFFF),
                             LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_bg_opa(ui->ParamConfig_cont_panel, 230,
+  lv_obj_set_style_bg_opa(ui->ParamConfig_cont_panel, 15,
                           LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_radius(ui->ParamConfig_cont_panel, 8,
+  lv_obj_set_style_radius(ui->ParamConfig_cont_panel, 12,
                           LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_border_width(ui->ParamConfig_cont_panel, 0,
+  lv_obj_set_style_border_width(ui->ParamConfig_cont_panel, 1,
                                 LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_border_color(ui->ParamConfig_cont_panel,
+                                lv_color_hex(0xFFFFFF),
+                                LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_border_opa(ui->ParamConfig_cont_panel, 30,
+                              LV_PART_MAIN | LV_STATE_DEFAULT);
 
   // --- Row 1: Heartbeat & Send Limit ---
   ui->ParamConfig_lbl_heartbeat = lv_label_create(ui->ParamConfig_cont_panel);
   lv_obj_set_pos(ui->ParamConfig_lbl_heartbeat, 8, 0);
   lv_label_set_text(ui->ParamConfig_lbl_heartbeat, "心跳(ms)");
   lv_obj_set_style_text_color(ui->ParamConfig_lbl_heartbeat,
-                              lv_color_hex(0x2F35DA),
+                              lv_color_hex(0xCBD5E1),
                               LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_text_font(ui->ParamConfig_lbl_heartbeat,
                              gui_assets_get_font_12(),
@@ -120,8 +129,14 @@ void setup_scr_ParamConfig(lv_ui *ui) {
   lv_obj_set_style_border_width(ui->ParamConfig_ta_heartbeat, 1,
                                 LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_border_color(ui->ParamConfig_ta_heartbeat,
-                                lv_color_hex(0xCCCCCC),
+                                lv_color_hex(0x475569),
                                 LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_bg_color(ui->ParamConfig_ta_heartbeat,
+                            lv_color_hex(0x1e293b),
+                            LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_text_color(ui->ParamConfig_ta_heartbeat,
+                              lv_color_hex(0xE2E8F0),
+                              LV_PART_MAIN | LV_STATE_DEFAULT);
 
   ui->ParamConfig_lbl_sendlimit = lv_label_create(ui->ParamConfig_cont_panel);
   lv_obj_set_pos(ui->ParamConfig_lbl_sendlimit, 150, 0);
@@ -145,8 +160,14 @@ void setup_scr_ParamConfig(lv_ui *ui) {
   lv_obj_set_style_border_width(ui->ParamConfig_ta_sendlimit, 1,
                                 LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_border_color(ui->ParamConfig_ta_sendlimit,
-                                lv_color_hex(0xCCCCCC),
+                                lv_color_hex(0x475569),
                                 LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_bg_color(ui->ParamConfig_ta_sendlimit,
+                            lv_color_hex(0x1e293b),
+                            LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_text_color(ui->ParamConfig_ta_sendlimit,
+                              lv_color_hex(0xE2E8F0),
+                              LV_PART_MAIN | LV_STATE_DEFAULT);
 
   // --- Row 2: HTTP Timeout & Hard Reset ---
   ui->ParamConfig_lbl_httptimeout = lv_label_create(ui->ParamConfig_cont_panel);
@@ -313,14 +334,14 @@ void setup_scr_ParamConfig(lv_ui *ui) {
                     "降采样：step=1全量，4推荐；分段4KB/10ms");
   lv_obj_set_style_text_font(ui->ParamConfig_lbl_tips, gui_assets_get_font_12(),
                              LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_text_color(ui->ParamConfig_lbl_tips, lv_color_hex(0x111111),
+  lv_obj_set_style_text_color(ui->ParamConfig_lbl_tips, lv_color_hex(0x94A3B8),
                               LV_PART_MAIN | LV_STATE_DEFAULT);
 
   // --- Buttons ---
   ui->ParamConfig_btn_back = lv_button_create(ui->ParamConfig);
   lv_obj_set_pos(ui->ParamConfig_btn_back, 10, 195);
   lv_obj_set_size(ui->ParamConfig_btn_back, 80, 30);
-  lv_obj_set_style_bg_color(ui->ParamConfig_btn_back, lv_color_hex(0x999999),
+  lv_obj_set_style_bg_color(ui->ParamConfig_btn_back, lv_color_hex(0x334155),
                             LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_radius(ui->ParamConfig_btn_back, 15,
                           LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -336,7 +357,7 @@ void setup_scr_ParamConfig(lv_ui *ui) {
   ui->ParamConfig_btn_load = lv_button_create(ui->ParamConfig);
   lv_obj_set_pos(ui->ParamConfig_btn_load, 120, 195);
   lv_obj_set_size(ui->ParamConfig_btn_load, 80, 30);
-  lv_obj_set_style_bg_color(ui->ParamConfig_btn_load, lv_color_hex(0xFFA500),
+  lv_obj_set_style_bg_color(ui->ParamConfig_btn_load, lv_color_hex(0xF97316),
                             LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_radius(ui->ParamConfig_btn_load, 15,
                           LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -352,7 +373,7 @@ void setup_scr_ParamConfig(lv_ui *ui) {
   ui->ParamConfig_btn_save = lv_button_create(ui->ParamConfig);
   lv_obj_set_pos(ui->ParamConfig_btn_save, 230, 195);
   lv_obj_set_size(ui->ParamConfig_btn_save, 80, 30);
-  lv_obj_set_style_bg_color(ui->ParamConfig_btn_save, lv_color_hex(0x3dfb00),
+  lv_obj_set_style_bg_color(ui->ParamConfig_btn_save, lv_color_hex(0x10B981),
                             LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_radius(ui->ParamConfig_btn_save, 15,
                           LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -360,7 +381,7 @@ void setup_scr_ParamConfig(lv_ui *ui) {
   ui->ParamConfig_btn_save_label = lv_label_create(ui->ParamConfig_btn_save);
   lv_label_set_text(ui->ParamConfig_btn_save_label, "保存配置");
   lv_obj_set_style_text_color(ui->ParamConfig_btn_save_label,
-                              lv_color_hex(0x2F35DA),
+                              lv_color_hex(0xFFFFFF),
                               LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_text_font(ui->ParamConfig_btn_save_label,
                              gui_assets_get_font_12(),

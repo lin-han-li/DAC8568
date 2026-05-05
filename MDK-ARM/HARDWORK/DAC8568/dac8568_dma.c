@@ -2,6 +2,7 @@
 
 #include "gpio.h"
 #include "main.h"
+#include "qspi_w25q256.h"
 #include "spi.h"
 #include "tim.h"
 #include "stm32h7xx_hal_dma_ex.h"
@@ -135,6 +136,20 @@ typedef struct {
 } dac8568_qspi_switch_t;
 
 static dac8568_qspi_switch_t g_qspi_switch = {0};
+
+static void dac8568_refresh_qspi_playback_guard(void) {
+  uint8_t active = ((g_stream_running != 0u) && (g_source_mode == DAC8568_SOURCE_QSPI)) ? 1u : 0u;
+  QSPI_W25Qxx_SetDacPlaybackActive(active);
+}
+
+static void dac8568_set_stream_running(uint8_t running) {
+  g_stream_running = (running != 0u) ? 1u : 0u;
+  dac8568_refresh_qspi_playback_guard();
+}
+
+static bool dac8568_qspi_ready_for_playback(void) {
+  return (QSPI_W25Qxx_IsMemoryMapped() != 0u) && (QSPI_W25Qxx_IsCommandModeBusy() == 0u);
+}
 
 static uint32_t dac8568_get_tx_sample_counter(void) {
   /* Derived from DMA progress for sub-buffer resolution (avoids 8191-sample quantization). */
@@ -510,10 +525,15 @@ void DAC8568_DMA_Init(uint32_t sample_rate_hz) {
 }
 
 void DAC8568_DMA_Start(void) {
-  g_stream_running = 0u;
+  dac8568_set_stream_running(0u);
   dac8568_tim12_stop();
 
   (void)HAL_SPI_Abort(&hspi1);
+
+  if ((g_source_mode == DAC8568_SOURCE_QSPI) && !dac8568_qspi_ready_for_playback()) {
+    g_tx_fail++;
+    return;
+  }
 
   /* Ensure LDAC allows continuous updates during streaming. */
   HAL_GPIO_WritePin(DAC8568_LDAC_GPIO_Port, DAC8568_LDAC_Pin, GPIO_PIN_RESET);
@@ -567,7 +587,7 @@ void DAC8568_DMA_Start(void) {
     return;
   }
 
-  g_stream_running = 1u;
+  dac8568_set_stream_running(1u);
   g_service_last_samples = dac8568_get_tx_sample_counter();
   g_service_last_fail = g_tx_fail;
   g_service_last_tick = HAL_GetTick();
@@ -669,7 +689,7 @@ void DAC8568_DMA_Service(void) {
     g_manual_recover_count++;
   }
 
-  g_stream_running = 0u;
+  dac8568_set_stream_running(0u);
   dac8568_tim12_stop();
   (void)HAL_SPI_Abort(&hspi1);
 
@@ -720,10 +740,13 @@ int32_t DAC8568_DMA_UseQspiWave(uint32_t qspi_mmap_addr, uint32_t sample_count,
   if (safe_samples == 0u) {
     return -4;
   }
+  if (!dac8568_qspi_ready_for_playback()) {
+    return -5;
+  }
 
   if (g_stream_running != 0u) {
     restart_stream = 1u;
-    g_stream_running = 0u;
+    dac8568_set_stream_running(0u);
     dac8568_tim12_stop();
     (void)HAL_SPI_Abort(&hspi1);
   }
@@ -733,6 +756,7 @@ int32_t DAC8568_DMA_UseQspiWave(uint32_t qspi_mmap_addr, uint32_t sample_count,
   g_qspi_wave_index[0] = 0u;
   g_qspi_active_source = 0u;
   g_source_mode = DAC8568_SOURCE_QSPI;
+  dac8568_refresh_qspi_playback_guard();
 
   if (sample_rate_hz != 0u) {
     g_sample_rate_hz = sample_rate_hz;
@@ -762,6 +786,9 @@ int32_t DAC8568_DMA_RequestQspiWave(uint8_t source_id, uint32_t qspi_mmap_addr,
   if (safe_samples == 0u) {
     return -4;
   }
+  if (!dac8568_qspi_ready_for_playback()) {
+    return -5;
+  }
 
   const uint16_t *data = (const uint16_t *)(uintptr_t)qspi_mmap_addr;
 
@@ -774,6 +801,7 @@ int32_t DAC8568_DMA_RequestQspiWave(uint8_t source_id, uint32_t qspi_mmap_addr,
     }
     g_qspi_active_source = source_id;
     g_source_mode = DAC8568_SOURCE_QSPI;
+    dac8568_refresh_qspi_playback_guard();
     return 0;
   }
 
@@ -789,6 +817,7 @@ int32_t DAC8568_DMA_RequestQspiWave(uint8_t source_id, uint32_t qspi_mmap_addr,
     __enable_irq();
   }
   g_source_mode = DAC8568_SOURCE_QSPI;
+  dac8568_refresh_qspi_playback_guard();
   return 0;
 }
 
@@ -801,7 +830,7 @@ void DAC8568_DMA_UseBuiltInWave(void) {
 
   if (g_stream_running != 0u) {
     restart_stream = 1u;
-    g_stream_running = 0u;
+    dac8568_set_stream_running(0u);
     dac8568_tim12_stop();
     (void)HAL_SPI_Abort(&hspi1);
   }
@@ -814,6 +843,7 @@ void DAC8568_DMA_UseBuiltInWave(void) {
   }
   g_qspi_active_source = 0u;
   g_qspi_switch.pending = 0u;
+  dac8568_refresh_qspi_playback_guard();
 
   if (restart_stream != 0u) {
     DAC8568_DMA_Start();

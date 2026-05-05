@@ -13,6 +13,7 @@
 #define W25Qxx_ERROR_Erase         		-4		// 擦除错误
 #define W25Qxx_ERROR_TRANSMIT         	-5		// 传输错误
 #define W25Qxx_ERROR_MemoryMapped		-6    // 内存映射模式错误
+#define W25Qxx_ERROR_BUSY               -7    // QSPI正在被DAC播放或命令模式占用
 
 #define W25Qxx_CMD_EnableReset  		0x66		// 使能复位
 #define W25Qxx_CMD_ResetDevice   	0x99		// 复位器件
@@ -57,6 +58,11 @@ int8_t 	QSPI_W25Qxx_MemoryMappedMode(void);		// 进入内存映射模式
 int8_t  QSPI_W25Qxx_EnterMemoryMapped(void);     // 进入内存映射模式（带状态判断）
 int8_t  QSPI_W25Qxx_ExitMemoryMapped(void);      // 退出内存映射模式
 uint8_t QSPI_W25Qxx_IsMemoryMapped(void);        // 查询当前是否处于内存映射模式
+int8_t  QSPI_W25Qxx_BeginCommandMode(void);      // 进入命令独占模式（擦写/退出映射前调用）
+void    QSPI_W25Qxx_EndCommandMode(void);        // 退出命令独占模式
+uint8_t QSPI_W25Qxx_IsCommandModeBusy(void);     // 查询命令模式是否占用
+void    QSPI_W25Qxx_SetDacPlaybackActive(uint8_t active); // 标记DAC是否正在读取QSPI memory-map
+uint8_t QSPI_W25Qxx_IsDacPlaybackActive(void);   // 查询DAC是否正在读取QSPI memory-map
 	
 int8_t 	QSPI_W25Qxx_SectorErase(uint32_t SectorAddress);		// 扇区擦除，4K字节， 参考擦除时间 45ms
 int8_t 	QSPI_W25Qxx_BlockErase_64K (uint32_t SectorAddress);	// 块擦除，  64K字节，参考擦除时间 150ms，实际使用建议使用64K擦除，擦除的时间最快
@@ -71,7 +77,6 @@ int8_t  QSPI_W25Qxx_WriteBuffer_Slow(uint8_t* pBuffer, uint32_t WriteAddr, uint3
 
 
 #endif // QSPI_w25q64_H 
-
 
 
 

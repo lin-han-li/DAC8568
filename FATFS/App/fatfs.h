@@ -28,7 +28,7 @@
 #include "sd_diskio.h" /* defines SD_Driver as external */
 
 /* USER CODE BEGIN Includes */
-#include "qspi_diskio.h" /* defines QSPI_Driver as external */
+/* QSPI is reserved for memory-mapped DAC waveform storage in the active build. */
 /* USER CODE END Includes */
 
 extern uint8_t retSD; /* Return value for SD */
@@ -39,12 +39,6 @@ extern FIL SDFile; /* File object for SD */
 void MX_FATFS_Init(void);
 
 /* USER CODE BEGIN Prototypes */
-extern uint8_t retQSPI; /* Return value for QSPI */
-extern char QSPIPath[4]; /* QSPI logical drive path */
-extern FATFS QSPIFatFS; /* File system object for QSPI logical drive */
-extern FIL QSPIFile; /* File object for QSPI */
-
-FRESULT QSPIFS_MountOrMkfs(void);
 
 /* USER CODE END Prototypes */
 #ifdef __cplusplus

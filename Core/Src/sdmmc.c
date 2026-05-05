@@ -46,7 +46,10 @@ void MX_SDMMC1_SD_Init(void)
   hsd1.Init.ClockDiv = 0;
   if (HAL_SD_Init(&hsd1) != HAL_OK)
   {
-    Error_Handler();
+    /* Allow no-card boot. FatFs/BSP_SD_Init() retries SD initialization later
+     * from the RTOS context when waveform sync actually needs the card.
+     */
+    return;
   }
   /* USER CODE BEGIN SDMMC1_Init 2 */
   /* CubeMX 可能会重置 ClockDiv；这里在原生 USER CODE 区域内强制对齐 PN_TI_LVGL_SD 的稳定配置 */

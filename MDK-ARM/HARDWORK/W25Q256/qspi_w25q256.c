@@ -41,6 +41,8 @@ extern QSPI_HandleTypeDef hqspi;	// 定义QSPI句柄，这里保留使用cubeMX�
 /* 前置声明：避免 C99 隐式声明错误（本文件里这些函数定义在后面） */
 int8_t QSPI_W25Qxx_AutoPollingMemReady(void);
 int8_t QSPI_W25Qxx_WriteEnable(void);
+static int8_t QSPI_W25Qxx_Reset_Unlocked(void);
+static int8_t QSPI_W25Qxx_WritePage_Unlocked(uint8_t* pBuffer, uint32_t WriteAddr, uint16_t NumByteToWrite);
 
 
 #define W25Qxx_NumByteToTest   	256						// 测试数据的长度（保持小，避免占用过多RAM）
@@ -52,7 +54,120 @@ int32_t QSPI_Status ; 		 //检测标志位
 uint32_t W25Qxx_TestAddr  =	0x1A20000	;							// 测试地址
 uint8_t  W25Qxx_WriteBuffer[W25Qxx_NumByteToTest];		//	写数据数组
 uint8_t  W25Qxx_ReadBuffer[W25Qxx_NumByteToTest];		//	读数据数组
-static uint8_t g_qspi_mmap_enabled = 0;
+static volatile uint8_t g_qspi_mmap_enabled = 0;
+static volatile uint8_t g_qspi_command_owner = 0;
+static volatile uint8_t g_qspi_dac_playback_active = 0;
+
+static void qspi_restore_irq(uint32_t primask)
+{
+	if (primask == 0U) {
+		__enable_irq();
+	}
+}
+
+static int8_t qspi_acquire_command_owner(uint8_t *release_needed)
+{
+	uint32_t primask;
+
+	if (release_needed == NULL) {
+		return W25Qxx_ERROR_TRANSMIT;
+	}
+	*release_needed = 0U;
+
+	primask = __get_PRIMASK();
+	__disable_irq();
+	if ((g_qspi_command_owner != 0U) || (g_qspi_dac_playback_active != 0U)) {
+		qspi_restore_irq(primask);
+		return W25Qxx_ERROR_BUSY;
+	}
+
+	g_qspi_command_owner = 1U;
+	*release_needed = 1U;
+	qspi_restore_irq(primask);
+	return QSPI_W25Qxx_OK;
+}
+
+static int8_t qspi_enter_command_context(uint8_t *release_needed)
+{
+	uint32_t primask;
+
+	if (release_needed == NULL) {
+		return W25Qxx_ERROR_TRANSMIT;
+	}
+	*release_needed = 0U;
+
+	primask = __get_PRIMASK();
+	__disable_irq();
+	if (g_qspi_command_owner != 0U) {
+		qspi_restore_irq(primask);
+		return QSPI_W25Qxx_OK;
+	}
+	if (g_qspi_dac_playback_active != 0U) {
+		qspi_restore_irq(primask);
+		return W25Qxx_ERROR_BUSY;
+	}
+
+	g_qspi_command_owner = 1U;
+	*release_needed = 1U;
+	qspi_restore_irq(primask);
+	return QSPI_W25Qxx_OK;
+}
+
+static void qspi_release_command_owner(uint8_t release_needed)
+{
+	uint32_t primask;
+
+	if (release_needed == 0U) {
+		return;
+	}
+
+	primask = __get_PRIMASK();
+	__disable_irq();
+	g_qspi_command_owner = 0U;
+	qspi_restore_irq(primask);
+}
+
+int8_t QSPI_W25Qxx_BeginCommandMode(void)
+{
+	uint8_t release_needed = 0U;
+	return qspi_acquire_command_owner(&release_needed);
+}
+
+void QSPI_W25Qxx_EndCommandMode(void)
+{
+	qspi_release_command_owner(1U);
+}
+
+uint8_t QSPI_W25Qxx_IsCommandModeBusy(void)
+{
+	uint8_t busy;
+	uint32_t primask = __get_PRIMASK();
+
+	__disable_irq();
+	busy = g_qspi_command_owner;
+	qspi_restore_irq(primask);
+	return busy;
+}
+
+void QSPI_W25Qxx_SetDacPlaybackActive(uint8_t active)
+{
+	uint32_t primask = __get_PRIMASK();
+
+	__disable_irq();
+	g_qspi_dac_playback_active = (active != 0U) ? 1U : 0U;
+	qspi_restore_irq(primask);
+}
+
+uint8_t QSPI_W25Qxx_IsDacPlaybackActive(void)
+{
+	uint8_t active;
+	uint32_t primask = __get_PRIMASK();
+
+	__disable_irq();
+	active = g_qspi_dac_playback_active;
+	qspi_restore_irq(primask);
+	return active;
+}
 
 static int8_t QSPI_W25Qxx_ReadStatus(uint8_t cmd, uint8_t *out)
 {
@@ -344,9 +459,16 @@ int8_t QSPI_W25Qxx_Init(void)
 {
 	uint32_t	Device_ID;	// 器件ID
 	uint8_t id3[3] = {0, 0, 0};
+	uint8_t qspi_guard_release = 0U;
+	int8_t ret = W25Qxx_ERROR_INIT;
+
+	ret = qspi_enter_command_context(&qspi_guard_release);
+	if (ret != QSPI_W25Qxx_OK) {
+		return ret;
+	}
 	
 	g_qspi_mmap_enabled = 0;
-	QSPI_W25Qxx_Reset();							// 复位器件
+	QSPI_W25Qxx_Reset_Unlocked();					// 复位器件
 	Device_ID = QSPI_W25Qxx_ReadID_Raw(id3); 		// 读取器件ID（带原始字节）
 	printf("[W25Q256] JEDEC raw=%02X %02X %02X => 0x%06lX\r\n",
 	       (unsigned int)id3[0], (unsigned int)id3[1], (unsigned int)id3[2], (unsigned long)Device_ID);
@@ -365,7 +487,7 @@ int8_t QSPI_W25Qxx_Init(void)
 
 		if (HAL_QSPI_Init(hq) == HAL_OK)
 		{
-			QSPI_W25Qxx_Reset();
+			QSPI_W25Qxx_Reset_Unlocked();
 			Device_ID = QSPI_W25Qxx_ReadID_Raw(id3);
 			printf("[W25Q256] JEDEC retry(slow) raw=%02X %02X %02X => 0x%06lX\r\n",
 			       (unsigned int)id3[0], (unsigned int)id3[1], (unsigned int)id3[2], (unsigned long)Device_ID);
@@ -387,17 +509,21 @@ int8_t QSPI_W25Qxx_Init(void)
 		if (qe_ret != QSPI_W25Qxx_OK)
 		{
 			printf ("W25Q256 OK(ID:%X) but QE set failed:%d\r\n", Device_ID, qe_ret);
-			return qe_ret;
+			ret = qe_ret;
+			qspi_release_command_owner(qspi_guard_release);
+			return ret;
 		}
 
 		printf ("W25Q256 OK,flash ID:%X\r\n",Device_ID);		// 初始化成功
-		return QSPI_W25Qxx_OK;			// 返回成功标志
+		ret = QSPI_W25Qxx_OK;			// 返回成功标志
 	}
 	else
 	{
 		printf ("W25Q256 ERROR!!!!!  ID:%X\r\n",Device_ID);	// 初始化失败	
-		return W25Qxx_ERROR_INIT;		// 返回错误标志
+		ret = W25Qxx_ERROR_INIT;		// 返回错误标志
 	}	
+	qspi_release_command_owner(qspi_guard_release);
+	return ret;
 }
 
 /*************************************************************************************************
@@ -450,7 +576,7 @@ int8_t QSPI_W25Qxx_AutoPollingMemReady(void)
 *	说    明: 无	
 *************************************************************************************************/
 
-int8_t QSPI_W25Qxx_Reset(void)	
+static int8_t QSPI_W25Qxx_Reset_Unlocked(void)
 {
 	QSPI_CommandTypeDef s_command;	// QSPI传输配置
 
@@ -490,6 +616,20 @@ int8_t QSPI_W25Qxx_Reset(void)
 	return QSPI_W25Qxx_OK;	// 复位成功
 }
 
+int8_t QSPI_W25Qxx_Reset(void)
+{
+	uint8_t qspi_guard_release = 0U;
+	int8_t ret = qspi_enter_command_context(&qspi_guard_release);
+
+	if (ret != QSPI_W25Qxx_OK) {
+		return ret;
+	}
+
+	ret = QSPI_W25Qxx_Reset_Unlocked();
+	qspi_release_command_owner(qspi_guard_release);
+	return ret;
+}
+
 /*************************************************************************************************
 *	函 数 名: QSPI_W25Qxx_ReadID
 *	入口参数: 无
@@ -500,7 +640,16 @@ int8_t QSPI_W25Qxx_Reset(void)
 
 uint32_t QSPI_W25Qxx_ReadID(void)	
 {
-	return QSPI_W25Qxx_ReadID_Raw(NULL);
+	uint32_t device_id;
+	uint8_t qspi_guard_release = 0U;
+
+	if (qspi_enter_command_context(&qspi_guard_release) != QSPI_W25Qxx_OK) {
+		return 0U;
+	}
+
+	device_id = QSPI_W25Qxx_ReadID_Raw(NULL);
+	qspi_release_command_owner(qspi_guard_release);
+	return device_id;
 }
 
 
@@ -517,6 +666,12 @@ int8_t QSPI_W25Qxx_MemoryMappedMode(void)
 {
 	QSPI_CommandTypeDef      s_command;				 // QSPI传输配置
 	QSPI_MemoryMappedTypeDef s_mem_mapped_cfg;	 // 内存映射访问参数
+	uint8_t qspi_guard_release = 0U;
+	int8_t ret = qspi_enter_command_context(&qspi_guard_release);
+
+	if (ret != QSPI_W25Qxx_OK) {
+		return ret;
+	}
 
 	s_command.InstructionMode   = QSPI_INSTRUCTION_1_LINE;    		// 1线指令模式
 	s_command.AddressSize       = QSPI_ADDRESS_32_BITS;     			// 32位地址（4字节）
@@ -534,14 +689,16 @@ int8_t QSPI_W25Qxx_MemoryMappedMode(void)
 	s_mem_mapped_cfg.TimeOutActivation = QSPI_TIMEOUT_COUNTER_DISABLE; // 禁用超时计数器, nCS 保持激活状态
 	s_mem_mapped_cfg.TimeOutPeriod     = 0;									 // 超时判断周期
 
-	QSPI_W25Qxx_Reset();		// 复位W25Qxx
+	QSPI_W25Qxx_Reset_Unlocked();		// 复位W25Qxx
 	
 	if (HAL_QSPI_MemoryMapped(&hqspi, &s_command, &s_mem_mapped_cfg) != HAL_OK)	// 进行配置
 	{
+		qspi_release_command_owner(qspi_guard_release);
 		return W25Qxx_ERROR_MemoryMapped; 	// 设置内存映射模式错误
 	}
 
 	g_qspi_mmap_enabled = 1;
+	qspi_release_command_owner(qspi_guard_release);
 	return QSPI_W25Qxx_OK; // 配置成功
 }
 
@@ -560,12 +717,21 @@ int8_t QSPI_W25Qxx_EnterMemoryMapped(void)
 
 int8_t QSPI_W25Qxx_ExitMemoryMapped(void)
 {
+	uint8_t qspi_guard_release = 0U;
+	int8_t ret = qspi_enter_command_context(&qspi_guard_release);
+
+	if (ret != QSPI_W25Qxx_OK) {
+		return ret;
+	}
+
 	/* 无论是否处于 memory-mapped 模式，都执行 Abort 以确保 HAL 状态正确 */
 	if (HAL_QSPI_Abort(&hqspi) != HAL_OK) {
+		qspi_release_command_owner(qspi_guard_release);
 		return W25Qxx_ERROR_MemoryMapped;
 	}
 
 	g_qspi_mmap_enabled = 0;
+	qspi_release_command_owner(qspi_guard_release);
 	return QSPI_W25Qxx_OK;
 }
 
@@ -646,6 +812,11 @@ int8_t QSPI_W25Qxx_WriteEnable(void)
 int8_t QSPI_W25Qxx_SectorErase(uint32_t SectorAddress)	
 {
 	QSPI_CommandTypeDef s_command;	// QSPI传输配置
+	uint8_t qspi_guard_release = 0U;
+	int8_t ret = qspi_enter_command_context(&qspi_guard_release);
+	if (ret != QSPI_W25Qxx_OK) {
+		return ret;
+	}
 	
 	s_command.InstructionMode   	= QSPI_INSTRUCTION_1_LINE;    // 1线指令模式
 	s_command.AddressSize       	= QSPI_ADDRESS_32_BITS;     	// 32位地址
@@ -662,18 +833,22 @@ int8_t QSPI_W25Qxx_SectorErase(uint32_t SectorAddress)
 	// 发送写使能
 	if (QSPI_W25Qxx_WriteEnable() != QSPI_W25Qxx_OK)
 	{
+		qspi_release_command_owner(qspi_guard_release);
 		return W25Qxx_ERROR_WriteEnable;		// 写使能失败
 	}
 	// 发出擦除命令
 	if (HAL_QSPI_Command(&hqspi, &s_command, HAL_QPSI_TIMEOUT_DEFAULT_VALUE) != HAL_OK)
 	{
+		qspi_release_command_owner(qspi_guard_release);
 		return W25Qxx_ERROR_Erase;				// 擦除失败
 	}
 	// 使用自动轮询标志位，等待擦除的结束 
 	if (QSPI_W25Qxx_AutoPollingMemReady() != QSPI_W25Qxx_OK)
 	{
+		qspi_release_command_owner(qspi_guard_release);
 		return W25Qxx_ERROR_AUTOPOLLING;		// 轮询等待无响应
 	}
+	qspi_release_command_owner(qspi_guard_release);
 	return QSPI_W25Qxx_OK; // 擦除成功
 }
 
@@ -700,6 +875,11 @@ int8_t QSPI_W25Qxx_SectorErase(uint32_t SectorAddress)
 int8_t QSPI_W25Qxx_BlockErase_64K (uint32_t SectorAddress)	
 {
 	QSPI_CommandTypeDef s_command;	// QSPI传输配置
+	uint8_t qspi_guard_release = 0U;
+	int8_t ret = qspi_enter_command_context(&qspi_guard_release);
+	if (ret != QSPI_W25Qxx_OK) {
+		return ret;
+	}
 	
 	s_command.InstructionMode   	= QSPI_INSTRUCTION_1_LINE;    // 1线指令模式
 	s_command.AddressSize       	= QSPI_ADDRESS_32_BITS;     	 // 32位地址
@@ -716,18 +896,22 @@ int8_t QSPI_W25Qxx_BlockErase_64K (uint32_t SectorAddress)
 	// 发送写使能
 	if (QSPI_W25Qxx_WriteEnable() != QSPI_W25Qxx_OK)
 	{
+		qspi_release_command_owner(qspi_guard_release);
 		return W25Qxx_ERROR_WriteEnable;	// 写使能失败
 	}
 	// 发出擦除命令
 	if (HAL_QSPI_Command(&hqspi, &s_command, HAL_QPSI_TIMEOUT_DEFAULT_VALUE) != HAL_OK)
 	{
+		qspi_release_command_owner(qspi_guard_release);
 		return W25Qxx_ERROR_Erase;			// 擦除失败
 	}
 	// 使用自动轮询标志位，等待擦除的结束 
 	if (QSPI_W25Qxx_AutoPollingMemReady() != QSPI_W25Qxx_OK)
 	{
+		qspi_release_command_owner(qspi_guard_release);
 		return W25Qxx_ERROR_AUTOPOLLING;	// 轮询等待无响应
 	}
+	qspi_release_command_owner(qspi_guard_release);
 	return QSPI_W25Qxx_OK;		// 擦除成功
 }
 
@@ -753,6 +937,11 @@ int8_t QSPI_W25Qxx_ChipErase (void)
 {
 	QSPI_CommandTypeDef s_command;		// QSPI传输配置
 	QSPI_AutoPollingTypeDef s_config;	// 轮询等待配置参数
+	uint8_t qspi_guard_release = 0U;
+	int8_t ret = qspi_enter_command_context(&qspi_guard_release);
+	if (ret != QSPI_W25Qxx_OK) {
+		return ret;
+	}
 
 	s_command.InstructionMode   	= QSPI_INSTRUCTION_1_LINE;    // 1线指令模式
 	s_command.AddressSize       	= QSPI_ADDRESS_32_BITS;     	// 32位地址
@@ -768,11 +957,13 @@ int8_t QSPI_W25Qxx_ChipErase (void)
 	// 发送写使能	
 	if (QSPI_W25Qxx_WriteEnable() != QSPI_W25Qxx_OK)
 	{
+		qspi_release_command_owner(qspi_guard_release);
 		return W25Qxx_ERROR_WriteEnable;	// 写使能失败
 	}
 	// 发出擦除命令
 	if (HAL_QSPI_Command(&hqspi, &s_command, HAL_QPSI_TIMEOUT_DEFAULT_VALUE) != HAL_OK)
 	{
+		qspi_release_command_owner(qspi_guard_release);
 		return W25Qxx_ERROR_Erase;		 // 擦除失败
 	}
 
@@ -793,8 +984,10 @@ int8_t QSPI_W25Qxx_ChipErase (void)
 	// W25Q256整片擦除的典型参考时间为20s，最大时间为100s，这里的超时等待值 W25Qxx_ChipErase_TIMEOUT_MAX 为 100S
 	if (HAL_QSPI_AutoPolling(&hqspi, &s_command, &s_config, W25Qxx_ChipErase_TIMEOUT_MAX) != HAL_OK)
 	{
+		qspi_release_command_owner(qspi_guard_release);
 		return W25Qxx_ERROR_AUTOPOLLING;	 // 轮询等待无响应
 	}
+	qspi_release_command_owner(qspi_guard_release);
 	return QSPI_W25Qxx_OK;
 }
 
@@ -821,7 +1014,7 @@ int8_t QSPI_W25Qxx_ChipErase (void)
 *
 ***********************************************************************************************************/
 
-int8_t QSPI_W25Qxx_WritePage(uint8_t* pBuffer, uint32_t WriteAddr, uint16_t NumByteToWrite)
+static int8_t QSPI_W25Qxx_WritePage_Unlocked(uint8_t* pBuffer, uint32_t WriteAddr, uint16_t NumByteToWrite)
 {
 	QSPI_CommandTypeDef s_command;	// QSPI传输配置	
 	
@@ -861,6 +1054,20 @@ int8_t QSPI_W25Qxx_WritePage(uint8_t* pBuffer, uint32_t WriteAddr, uint16_t NumB
 	return QSPI_W25Qxx_OK;	// 写数据成功
 }
 
+int8_t QSPI_W25Qxx_WritePage(uint8_t* pBuffer, uint32_t WriteAddr, uint16_t NumByteToWrite)
+{
+	uint8_t qspi_guard_release = 0U;
+	int8_t ret = qspi_enter_command_context(&qspi_guard_release);
+
+	if (ret != QSPI_W25Qxx_OK) {
+		return ret;
+	}
+
+	ret = QSPI_W25Qxx_WritePage_Unlocked(pBuffer, WriteAddr, NumByteToWrite);
+	qspi_release_command_owner(qspi_guard_release);
+	return ret;
+}
+
 /**********************************************************************************************************
 *
 *	函 数 名: QSPI_W25Qxx_WriteBuffer
@@ -889,6 +1096,12 @@ int8_t QSPI_W25Qxx_WriteBuffer(uint8_t* pBuffer, uint32_t WriteAddr, uint32_t Si
 {	
 	uint32_t end_addr, current_size, current_addr;
 	uint8_t *write_data;  // 要写入的数据
+	uint8_t qspi_guard_release = 0U;
+	int8_t ret = qspi_enter_command_context(&qspi_guard_release);
+
+	if (ret != QSPI_W25Qxx_OK) {
+		return ret;
+	}
 
 	current_size = W25Qxx_PageSize - (WriteAddr % W25Qxx_PageSize); // 计算当前页还剩余的空间
 
@@ -906,18 +1119,21 @@ int8_t QSPI_W25Qxx_WriteBuffer(uint8_t* pBuffer, uint32_t WriteAddr, uint32_t Si
 		// 发送写使能
 		if (QSPI_W25Qxx_WriteEnable() != QSPI_W25Qxx_OK)
 		{
+			qspi_release_command_owner(qspi_guard_release);
 			return W25Qxx_ERROR_WriteEnable;
 		}
 
 		// 按页写入数据
-		else if(QSPI_W25Qxx_WritePage(write_data, current_addr, current_size) != QSPI_W25Qxx_OK)
+		else if(QSPI_W25Qxx_WritePage_Unlocked(write_data, current_addr, current_size) != QSPI_W25Qxx_OK)
 		{
+			qspi_release_command_owner(qspi_guard_release);
 			return W25Qxx_ERROR_TRANSMIT;
 		}
 
 		// 使用自动轮询标志位，等待写入的结束 
 		else 	if (QSPI_W25Qxx_AutoPollingMemReady() != QSPI_W25Qxx_OK)
 		{
+			qspi_release_command_owner(qspi_guard_release);
 			return W25Qxx_ERROR_AUTOPOLLING;
 		}
 
@@ -931,6 +1147,7 @@ int8_t QSPI_W25Qxx_WriteBuffer(uint8_t* pBuffer, uint32_t WriteAddr, uint32_t Si
 	}
 	while (current_addr < end_addr) ; // 判断数据是否全部写入完毕
 
+	qspi_release_command_owner(qspi_guard_release);
 	return QSPI_W25Qxx_OK;	// 写入数据成功
 
 }
@@ -964,6 +1181,12 @@ int8_t QSPI_W25Qxx_WriteBuffer(uint8_t* pBuffer, uint32_t WriteAddr, uint32_t Si
 int8_t QSPI_W25Qxx_ReadBuffer(uint8_t* pBuffer, uint32_t ReadAddr, uint32_t NumByteToRead)
 {
 	QSPI_CommandTypeDef s_command;	// QSPI传输配置
+	uint8_t qspi_guard_release = 0U;
+	int8_t ret = qspi_enter_command_context(&qspi_guard_release);
+
+	if (ret != QSPI_W25Qxx_OK) {
+		return ret;
+	}
 	
 	s_command.InstructionMode   = QSPI_INSTRUCTION_1_LINE;    		// 1线指令模式
 	s_command.AddressSize       = QSPI_ADDRESS_32_BITS;     	 		// 32位地址
@@ -981,6 +1204,7 @@ int8_t QSPI_W25Qxx_ReadBuffer(uint8_t* pBuffer, uint32_t ReadAddr, uint32_t NumB
 	// 发送读取命令
 	if (HAL_QSPI_Command(&hqspi, &s_command, HAL_QPSI_TIMEOUT_DEFAULT_VALUE) != HAL_OK)
 	{
+		qspi_release_command_owner(qspi_guard_release);
 		return W25Qxx_ERROR_TRANSMIT;		// 传输数据错误
 	}
 
@@ -988,23 +1212,33 @@ int8_t QSPI_W25Qxx_ReadBuffer(uint8_t* pBuffer, uint32_t ReadAddr, uint32_t NumB
 	
 	if (HAL_QSPI_Receive(&hqspi, pBuffer, HAL_QPSI_TIMEOUT_DEFAULT_VALUE) != HAL_OK)
 	{
+		qspi_release_command_owner(qspi_guard_release);
 		return W25Qxx_ERROR_TRANSMIT;		// 传输数据错误
 	}
 
 	// 使用自动轮询标志位，等待接收的结束 
 	if (QSPI_W25Qxx_AutoPollingMemReady() != QSPI_W25Qxx_OK)
 	{
+		qspi_release_command_owner(qspi_guard_release);
 		return W25Qxx_ERROR_AUTOPOLLING; // 轮询等待无响应
 	}
+	qspi_release_command_owner(qspi_guard_release);
 	return QSPI_W25Qxx_OK;	// 读取数据成功
 }
 
 int8_t QSPI_W25Qxx_ReadBuffer_Slow(uint8_t* pBuffer, uint32_t ReadAddr, uint32_t NumByteToRead)
 {
 	QSPI_CommandTypeDef s_command;	// QSPI传输配置
+	uint8_t qspi_guard_release = 0U;
+	int8_t ret;
 
 	if (pBuffer == NULL || NumByteToRead == 0U) {
 		return W25Qxx_ERROR_TRANSMIT;
+	}
+
+	ret = qspi_enter_command_context(&qspi_guard_release);
+	if (ret != QSPI_W25Qxx_OK) {
+		return ret;
 	}
 
 	s_command.InstructionMode   = QSPI_INSTRUCTION_1_LINE;			// 1线指令模式
@@ -1022,14 +1256,17 @@ int8_t QSPI_W25Qxx_ReadBuffer_Slow(uint8_t* pBuffer, uint32_t ReadAddr, uint32_t
 
 	if (HAL_QSPI_Command(&hqspi, &s_command, HAL_QPSI_TIMEOUT_DEFAULT_VALUE) != HAL_OK)
 	{
+		qspi_release_command_owner(qspi_guard_release);
 		return W25Qxx_ERROR_TRANSMIT;		// 传输错误
 	}
 
 	if (HAL_QSPI_Receive(&hqspi, pBuffer, HAL_QPSI_TIMEOUT_DEFAULT_VALUE) != HAL_OK)
 	{
+		qspi_release_command_owner(qspi_guard_release);
 		return W25Qxx_ERROR_TRANSMIT;		// 传输错误
 	}
 
+	qspi_release_command_owner(qspi_guard_release);
 	return QSPI_W25Qxx_OK;
 }
 
@@ -1077,9 +1314,16 @@ int8_t QSPI_W25Qxx_WriteBuffer_Slow(uint8_t* pBuffer, uint32_t WriteAddr, uint32
 {
 	uint32_t end_addr, current_size, current_addr;
 	uint8_t *write_data;
+	uint8_t qspi_guard_release = 0U;
+	int8_t ret;
 
 	if (pBuffer == NULL || Size == 0U) {
 		return W25Qxx_ERROR_TRANSMIT;
+	}
+
+	ret = qspi_enter_command_context(&qspi_guard_release);
+	if (ret != QSPI_W25Qxx_OK) {
+		return ret;
 	}
 
 	current_size = W25Qxx_PageSize - (WriteAddr % W25Qxx_PageSize);
@@ -1094,6 +1338,7 @@ int8_t QSPI_W25Qxx_WriteBuffer_Slow(uint8_t* pBuffer, uint32_t WriteAddr, uint32
 	do
 	{
 		if (QSPI_W25Qxx_WritePage_Slow(write_data, current_addr, (uint16_t)current_size) != QSPI_W25Qxx_OK) {
+			qspi_release_command_owner(qspi_guard_release);
 			return W25Qxx_ERROR_TRANSMIT;
 		}
 
@@ -1103,6 +1348,7 @@ int8_t QSPI_W25Qxx_WriteBuffer_Slow(uint8_t* pBuffer, uint32_t WriteAddr, uint32
 	}
 	while (current_addr < end_addr);
 
+	qspi_release_command_owner(qspi_guard_release);
 	return QSPI_W25Qxx_OK;
 }
 
@@ -1110,4 +1356,3 @@ int8_t QSPI_W25Qxx_WriteBuffer_Slow(uint8_t* pBuffer, uint32_t WriteAddr, uint32
 //	实验平台：反客STM32H750XBH6核心板 （型号：FK750M4-XBH6）
 
 /********************************************************************************************************************************************************************************************************FANKE**********/
-
