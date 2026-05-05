@@ -409,3 +409,21 @@ COM8:
 ```
 
 建议把本次状态作为“幂等 SD->W25Q 同步 + DAC 播放恢复 + 双项目交接文档”的稳定标签。
+
+## 13. 2026-05-05 全面审计后追加固化项
+
+本轮审计后的主线约束已经落地到工程文件中，后续接手时请把这些点当成硬边界：
+
+- FreeRTOS portable 层已经从 `RVDS/ARM_CM4F` 切换为 `RVDS/ARM_CM7/r0p1`，保持 `configENABLE_FPU=1`。
+- 旧 `GUI-Guider_Runtime`、`GUI-Guider_Source` 和旧 `dac_wave_sync` 已移动到 `legacy_not_build/`，不要重新加入 Keil 主工程。
+- 当前有效 scatter 仍是 `MDK-ARM/STM32H750XBH6_d2.sct`，不要改用旧 `STM32H750XBH6.sct`。
+- H750XBH6 下载继续使用工程内已验证的 `STM32H7x_2048.FLM`，不要切到 H743 Device 或按 H743 内部 Flash 假设重配。
+- DAC8568 的 D2 SRAM DMA 大缓冲接近占满 D2 区，已在 `dac8568_dma.c` 增加编译期预算检查；新增 DMA 缓冲前必须先看 map。
+- `tools/check_keil_audit.ps1` 是只读审计脚本，用于确认 Keil 工程没有退回 CM4F port、没有重新引用旧 GUI/QSPI 资源代码，并检查 map 中 D2 SRAM 余量。
+- HardFault、`Error_Handler`、FreeRTOS malloc failed/stack overflow hook 已增加“停 DAC 输出 + COM8 打印诊断 + 停机”的最小现场诊断路径。
+
+建议每次修改 Keil 配置、QSPI/W25Q、DAC DMA 或 UI 触发逻辑后执行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\check_keil_audit.ps1
+```

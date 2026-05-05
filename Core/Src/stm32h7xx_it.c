@@ -22,6 +22,8 @@
 #include "stm32h7xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "DAC8568/dac8568_dma.h"
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -41,6 +43,7 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
+extern UART_HandleTypeDef huart1;
 
 /* USER CODE END PV */
 
@@ -51,6 +54,54 @@
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+static void Fault_StopAndReport(const char *name, uint32_t *stack, uint32_t exc_return)
+{
+  uint32_t r0 = 0u;
+  uint32_t r1 = 0u;
+  uint32_t r2 = 0u;
+  uint32_t r3 = 0u;
+  uint32_t r12 = 0u;
+  uint32_t lr = 0u;
+  uint32_t pc = 0u;
+  uint32_t xpsr = 0u;
+
+  if (stack != NULL)
+  {
+    r0 = stack[0];
+    r1 = stack[1];
+    r2 = stack[2];
+    r3 = stack[3];
+    r12 = stack[4];
+    lr = stack[5];
+    pc = stack[6];
+    xpsr = stack[7];
+  }
+
+  DAC8568_DMA_StopAndHold(0.0f);
+  if (huart1.Instance != NULL)
+  {
+    printf("[%s] pc=0x%08lX lr=0x%08lX xpsr=0x%08lX exc=0x%08lX cfsr=0x%08lX hfsr=0x%08lX bfar=0x%08lX mmfar=0x%08lX r0=0x%08lX r1=0x%08lX r2=0x%08lX r3=0x%08lX r12=0x%08lX\r\n",
+           name,
+           (unsigned long)pc,
+           (unsigned long)lr,
+           (unsigned long)xpsr,
+           (unsigned long)exc_return,
+           (unsigned long)SCB->CFSR,
+           (unsigned long)SCB->HFSR,
+           (unsigned long)SCB->BFAR,
+           (unsigned long)SCB->MMFAR,
+           (unsigned long)r0,
+           (unsigned long)r1,
+           (unsigned long)r2,
+           (unsigned long)r3,
+           (unsigned long)r12);
+  }
+
+  __disable_irq();
+  for (;;)
+  {
+  }
+}
 
 /* USER CODE END 0 */
 
@@ -97,6 +148,10 @@ void NMI_Handler(void)
 void HardFault_Handler(void)
 {
   /* USER CODE BEGIN HardFault_IRQn 0 */
+  uint32_t exc_return;
+  __asm volatile ("mov %0, lr" : "=r" (exc_return));
+  uint32_t *stack = (uint32_t *)((exc_return & 0x4u) ? __get_PSP() : __get_MSP());
+  Fault_StopAndReport("HARDFAULT", stack, exc_return);
 
   /* USER CODE END HardFault_IRQn 0 */
   while (1)

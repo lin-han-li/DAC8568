@@ -365,6 +365,11 @@ void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
+  DAC8568_DMA_StopAndHold(0.0f);
+  if (huart1.Instance != NULL)
+  {
+    printf("[ERROR] Error_Handler tick=%lu\r\n", (unsigned long)HAL_GetTick());
+  }
   __disable_irq();
   while (1)
   {

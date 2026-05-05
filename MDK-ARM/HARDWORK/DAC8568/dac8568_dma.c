@@ -46,9 +46,16 @@
 #define DAC8568_SAMPLES_PER_HALF 8191u
 #define DAC8568_TX_BUF_WORDS (DAC8568_SAMPLES_PER_HALF * DAC8568_WORDS_PER_SAMPLE * 2u)
 #define DAC8568_TX_HALF_WORDS (DAC8568_TX_BUF_WORDS / 2u)
+#define DAC8568_TX_BUF_BYTES (DAC8568_TX_BUF_WORDS * 4u)
+#define DAC8568_D2SRAM_BYTES 0x00040000u
+#define DAC8568_D2SRAM_MIN_FREE_BYTES 32u
 
 #if (DAC8568_TX_BUF_WORDS > 65535u)
 #error "DAC8568_TX_BUF_WORDS exceeds HAL_SPI_Transmit_DMA(uint16_t Size) limit; reduce DAC8568_SAMPLES_PER_HALF."
+#endif
+
+#if (DAC8568_TX_BUF_BYTES > (DAC8568_D2SRAM_BYTES - DAC8568_D2SRAM_MIN_FREE_BYTES))
+#error "DAC8568 TX buffer exceeds reserved D2 SRAM budget."
 #endif
 
 /*
@@ -135,7 +142,7 @@ typedef struct {
   uint32_t samples;
 } dac8568_qspi_switch_t;
 
-static dac8568_qspi_switch_t g_qspi_switch = {0};
+static volatile dac8568_qspi_switch_t g_qspi_switch = {0};
 
 static void dac8568_refresh_qspi_playback_guard(void) {
   uint8_t active = ((g_stream_running != 0u) && (g_source_mode == DAC8568_SOURCE_QSPI)) ? 1u : 0u;
@@ -392,11 +399,13 @@ static void dac8568_fill_samples(uint32_t *dst, uint32_t sample_count) {
   uint32_t qspi_index = 0u;
 
   if (g_qspi_switch.pending != 0u) {
+    __DMB();
     uint8_t new_source = g_qspi_switch.source_id;
     const uint16_t *new_data = g_qspi_switch.data;
     uint32_t new_samples = g_qspi_switch.samples;
     uint8_t reset_idx = g_qspi_switch.reset_index;
     g_qspi_switch.pending = 0u;
+    __DMB();
 
     if (new_source < DAC8568_QSPI_SOURCE_MAX && new_data != NULL && new_samples > 0u) {
       g_qspi_wave_data[new_source] = new_data;
@@ -817,7 +826,9 @@ int32_t DAC8568_DMA_RequestQspiWave(uint8_t source_id, uint32_t qspi_mmap_addr,
   g_qspi_switch.data = data;
   g_qspi_switch.samples = safe_samples;
   g_qspi_switch.reset_index = reset_index ? 1u : 0u;
+  __DMB();
   g_qspi_switch.pending = 1u;
+  __DMB();
   if (primask == 0u) {
     __enable_irq();
   }
@@ -885,6 +896,30 @@ void DAC8568_OutputFixedVoltage(float voltage) {
     __NOP();
   }
   HAL_GPIO_WritePin(DAC8568_LDAC_GPIO_Port, DAC8568_LDAC_Pin, GPIO_PIN_SET);
+}
+
+void DAC8568_DMA_StopAndHold(float voltage) {
+  dac8568_set_stream_running(0u);
+  if (htim12.Instance != NULL) {
+    dac8568_tim12_stop();
+  }
+  if (hspi1.Instance != NULL) {
+    (void)HAL_SPI_Abort(&hspi1);
+  }
+
+  g_source_mode = DAC8568_SOURCE_LUT;
+  for (uint32_t i = 0u; i < DAC8568_QSPI_SOURCE_MAX; i++) {
+    g_qspi_wave_data[i] = NULL;
+    g_qspi_wave_samples[i] = 0u;
+    g_qspi_wave_index[i] = 0u;
+  }
+  g_qspi_active_source = 0u;
+  g_qspi_switch.pending = 0u;
+  __DMB();
+  dac8568_refresh_qspi_playback_guard();
+  if (hspi1.Instance != NULL) {
+    DAC8568_OutputFixedVoltage(voltage);
+  }
 }
 
 void HAL_SPI_TxHalfCpltCallback(SPI_HandleTypeDef *hspi) {

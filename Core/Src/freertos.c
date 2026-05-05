@@ -359,6 +359,33 @@ void vApplicationTickHook(void)
 
   lv_tick_inc(1);
 }
+
+static void RtosFatalHold(const char *reason, const signed char *task_name)
+{
+  const char *name = (task_name != NULL) ? (const char *)task_name : "-";
+
+  DAC8568_DMA_StopAndHold(0.0f);
+  printf("[RTOS FAULT] %s task=%s tick=%lu\r\n",
+         reason,
+         name,
+         (unsigned long)HAL_GetTick());
+
+  taskDISABLE_INTERRUPTS();
+  for (;;)
+  {
+  }
+}
+
+void vApplicationMallocFailedHook(void)
+{
+  RtosFatalHold("malloc_failed", NULL);
+}
+
+void vApplicationStackOverflowHook(TaskHandle_t xTask, signed char *pcTaskName)
+{
+  (void)xTask;
+  RtosFatalHold("stack_overflow", pcTaskName);
+}
 /* USER CODE END 3 */
 
 /**
