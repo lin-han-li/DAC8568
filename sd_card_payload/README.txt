@@ -36,6 +36,12 @@ Baseline waveform (normal.bin):
 Fault waveforms:
 - Each fault bin is generated as an independent waveform (not "baseline + overlay"),
   so Simulink-exported fault bins can directly replace `wave/*.bin` if they follow the same header+data format.
+- ac_coupling: 50Hz common-mode injection, zero-cross switching noise and leakage rise.
+- bus_ground: periodic bus collapse, over-current surge, leakage spike and damped recovery.
+- insulation: slow insulation drift, elevated leakage and partial-discharge pulse bursts.
+- cap_aging: higher 100/120Hz DC-link ripple, deeper valleys and ESR recharge spikes.
+- pwm_abnormal: carrier ripple, duty jitter, missing-pulse dropout and current modulation.
+- igbt_fault: desaturation/short-circuit spike, bus sag, protection clamp and recovery.
 
 Default sample rate in generated files:
 - 102400 Hz

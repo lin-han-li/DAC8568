@@ -73,6 +73,15 @@ python tools/gen_dac_fault_suite.py
 
 生成结果放在 `sd_card_payload/copy_to_sd/wave`，复制到 SD 卡根目录即可。
 
+当前 6 类故障波形模型:
+
+- `ac_coupling`: 50Hz 共模窜入、过零噪声和泄漏抬升。
+- `bus_ground`: 母线塌陷、过流浪涌、泄漏尖峰和阻尼恢复。
+- `insulation`: 绝缘慢漂、泄漏升高和局部放电脉冲。
+- `cap_aging`: 100/120Hz 链路纹波增大、谷值加深和 ESR 充电脉冲。
+- `pwm_abnormal`: 载波纹波、占空比抖动、丢脉冲和电流调制。
+- `igbt_fault`: 短路/退饱和尖峰、母线下陷、保护钳位和恢复。
+
 ## 构建入口
 
 使用 Keil 打开:
