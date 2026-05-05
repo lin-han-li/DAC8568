@@ -125,7 +125,7 @@ bool DAC_Wave_IsBootReady(void);
 
 /* 1: 必须 SD 同步成功才启动 DAC 波形流；0: 允许从 QSPI 直接加载已同步的波形或回退 */
 #ifndef DAC_WAVE_REQUIRE_SD_SYNC
-#define DAC_WAVE_REQUIRE_SD_SYNC 1
+#define DAC_WAVE_REQUIRE_SD_SYNC 0
 #endif
 
 /*
@@ -134,7 +134,7 @@ bool DAC_Wave_IsBootReady(void);
  * 0: skip SD sync on boot, only load existing wave metadata from QSPI.
  */
 #ifndef DAC_WAVE_BOOT_FULL_SYNC
-#define DAC_WAVE_BOOT_FULL_SYNC 0
+#define DAC_WAVE_BOOT_FULL_SYNC 1
 #endif
 /* USER CODE END Private defines */
 

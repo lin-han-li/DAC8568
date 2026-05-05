@@ -34,6 +34,7 @@
 // Demo 已移除，使用自定义 EdgeWind UI
 #include "EdgeWind_UI/edgewind_ui.h"
 #include "DAC8568/dac8568_dma.h"
+#include "qspi_w25q256.h"
 #include "sd_waveform.h"
 #include <stdio.h>
 #include <string.h>
@@ -617,10 +618,16 @@ void Main_Task(void *argument)
       uint32_t ref_rearm = 0u;
       uint32_t ref_refresh = 0u;
       uint32_t stagnant = 0u;
+      uint8_t active_source = 0u;
+      uint8_t mmap = 0u;
+      uint8_t qspi_busy = 0u;
 
       DAC8568_DMA_GetStats(&ok, &fail, &skip);
       DAC8568_DMA_GetHealth(&recover, &reason, &ref_rearm, &ref_refresh, &stagnant);
-      printf("[DAC] ok=%lu fail=%lu skip=%lu rec=%lu reason=%lu ref=%lu refresh=%lu stagnant=%lu\r\n",
+      active_source = DAC8568_DMA_GetActiveQspiSource();
+      mmap = QSPI_W25Qxx_IsMemoryMapped();
+      qspi_busy = QSPI_W25Qxx_IsCommandModeBusy();
+      printf("[DAC] ok=%lu fail=%lu skip=%lu rec=%lu reason=%lu ref=%lu refresh=%lu stagnant=%lu ready=0x%02lX sd=0x%02lX boot=%u stream=%u src=%u mmap=%u busy=%u\r\n",
              (unsigned long)ok,
              (unsigned long)fail,
              (unsigned long)skip,
@@ -628,7 +635,14 @@ void Main_Task(void *argument)
              (unsigned long)reason,
              (unsigned long)ref_rearm,
              (unsigned long)ref_refresh,
-             (unsigned long)stagnant);
+             (unsigned long)stagnant,
+             (unsigned long)s_dac_wave_ready_mask,
+             (unsigned long)s_dac_wave_sd_sync_mask,
+             (unsigned)s_dac_wave_boot_sync_done,
+             (unsigned)s_dac_stream_started,
+             (unsigned)active_source,
+             (unsigned)mmap,
+             (unsigned)qspi_busy);
       last_log = now;
     }
 
@@ -691,21 +705,42 @@ static bool dac_fault_apply_trigger(uint32_t fault_id_0_5, uint32_t duration_s)
   const uint32_t dur_s = dac_fault_clamp_duration_s(duration_s);
   const TickType_t now = xTaskGetTickCount();
   const TickType_t delta = pdMS_TO_TICKS(dur_s * 1000u);
+  int32_t req_ret = 0;
 
   if (fault_id_0_5 >= DAC_FAULT_COUNT) {
+    printf("[DAC BURST] trigger reject invalid id=%lu\r\n",
+           (unsigned long)fault_id_0_5);
     return false;
   }
   if (s_dac_wave_boot_sync_done == 0u || s_dac_stream_started == 0u) {
+    printf("[DAC BURST] trigger reject state: id=%lu boot=%u stream=%u ready=0x%02lX\r\n",
+           (unsigned long)fault_id_0_5,
+           (unsigned)s_dac_wave_boot_sync_done,
+           (unsigned)s_dac_stream_started,
+           (unsigned long)s_dac_wave_ready_mask);
     return false;
   }
   if (!dac_wave_partition_ready(0u) || !dac_wave_partition_ready(partition)) {
+    printf("[DAC BURST] trigger reject wave: id=%lu part=%u ready=0x%02lX normal_addr=0x%08lX fault_addr=0x%08lX\r\n",
+           (unsigned long)fault_id_0_5,
+           (unsigned)partition,
+           (unsigned long)s_dac_wave_ready_mask,
+           (unsigned long)s_dac_wave_info[0].qspi_mmap_addr,
+           (unsigned long)s_dac_wave_info[partition].qspi_mmap_addr);
     return false;
   }
 
-  if (DAC8568_DMA_RequestQspiWave(partition,
-                                  s_dac_wave_info[partition].qspi_mmap_addr,
-                                  s_dac_wave_info[partition].sample_count,
-                                  true) != 0) {
+  req_ret = DAC8568_DMA_RequestQspiWave(partition,
+                                        s_dac_wave_info[partition].qspi_mmap_addr,
+                                        s_dac_wave_info[partition].sample_count,
+                                        true);
+  printf("[DAC BURST] request: id=%lu part=%u addr=0x%08lX count=%lu ret=%ld\r\n",
+         (unsigned long)fault_id_0_5,
+         (unsigned)partition,
+         (unsigned long)s_dac_wave_info[partition].qspi_mmap_addr,
+         (unsigned long)s_dac_wave_info[partition].sample_count,
+         (long)req_ret);
+  if (req_ret != 0) {
     return false;
   }
 
@@ -717,6 +752,8 @@ static bool dac_fault_apply_trigger(uint32_t fault_id_0_5, uint32_t duration_s)
 
 static void dac_fault_apply_stop(void)
 {
+  int32_t req_ret = 0;
+
   if (s_dac_wave_boot_sync_done == 0u || s_dac_stream_started == 0u) {
     return;
   }
@@ -724,10 +761,14 @@ static void dac_fault_apply_stop(void)
     return;
   }
 
-  (void)DAC8568_DMA_RequestQspiWave(0u,
-                                    s_dac_wave_info[0].qspi_mmap_addr,
-                                    s_dac_wave_info[0].sample_count,
-                                    false);
+  req_ret = DAC8568_DMA_RequestQspiWave(0u,
+                                        s_dac_wave_info[0].qspi_mmap_addr,
+                                        s_dac_wave_info[0].sample_count,
+                                        false);
+  printf("[DAC BURST] baseline request: addr=0x%08lX count=%lu ret=%ld\r\n",
+         (unsigned long)s_dac_wave_info[0].qspi_mmap_addr,
+         (unsigned long)s_dac_wave_info[0].sample_count,
+         (long)req_ret);
 
   s_fault_active_id_0_5 = 0xFFu;
   s_fault_end_tick = 0;
@@ -764,14 +805,27 @@ void DAC_FaultBurst_Stop(void)
 
 void DAC_FaultBurst_GetUiState(uint32_t *ready_mask, uint8_t *active_fault_id_0_5, uint32_t *remaining_s)
 {
+  uint32_t ready_snapshot = 0u;
+  uint8_t active_snapshot = 0xFFu;
+  uint32_t remaining_snapshot = 0u;
+  uint32_t primask = __get_PRIMASK();
+
+  __disable_irq();
+  ready_snapshot = s_dac_wave_ready_mask;
+  active_snapshot = s_fault_active_id_0_5;
+  remaining_snapshot = s_fault_remaining_s;
+  if (primask == 0u) {
+    __enable_irq();
+  }
+
   if (ready_mask != NULL) {
-    *ready_mask = s_dac_wave_ready_mask;
+    *ready_mask = ready_snapshot;
   }
   if (active_fault_id_0_5 != NULL) {
-    *active_fault_id_0_5 = s_fault_active_id_0_5;
+    *active_fault_id_0_5 = active_snapshot;
   }
   if (remaining_s != NULL) {
-    *remaining_s = s_fault_remaining_s;
+    *remaining_s = remaining_snapshot;
   }
 }
 

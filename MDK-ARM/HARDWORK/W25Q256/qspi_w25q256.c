@@ -715,6 +715,15 @@ int8_t QSPI_W25Qxx_EnterMemoryMapped(void)
 	return ret;
 }
 
+int8_t QSPI_W25Qxx_ForceMemoryMapped(void)
+{
+	int8_t ret = QSPI_W25Qxx_ExitMemoryMapped();
+	if (ret != QSPI_W25Qxx_OK) {
+		return ret;
+	}
+	return QSPI_W25Qxx_MemoryMappedMode();
+}
+
 int8_t QSPI_W25Qxx_ExitMemoryMapped(void)
 {
 	uint8_t qspi_guard_release = 0U;

@@ -75,9 +75,14 @@ int8_t  QSPI_W25Qxx_ReadBuffer_Slow(uint8_t* pBuffer, uint32_t ReadAddr, uint32_
 int8_t  QSPI_W25Qxx_WriteBuffer_Slow(uint8_t* pBuffer, uint32_t WriteAddr, uint32_t Size); // 低速可靠写入（1-1-1）
 
 
+/* Clean prototypes for APIs that are hard to read in the legacy comment block above. */
+int8_t  QSPI_W25Qxx_ExitMemoryMapped(void);
+uint8_t QSPI_W25Qxx_IsMemoryMapped(void);
+int8_t  QSPI_W25Qxx_BeginCommandMode(void);
+void    QSPI_W25Qxx_EndCommandMode(void);
+uint8_t QSPI_W25Qxx_IsCommandModeBusy(void);
+int8_t  QSPI_W25Qxx_ForceMemoryMapped(void);
 
 #endif // QSPI_w25q64_H 
-
-
 
 

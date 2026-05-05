@@ -693,6 +693,11 @@ void DAC8568_DMA_Service(void) {
   dac8568_tim12_stop();
   (void)HAL_SPI_Abort(&hspi1);
 
+  if (g_source_mode == DAC8568_SOURCE_QSPI) {
+    if (QSPI_W25Qxx_ForceMemoryMapped() != QSPI_W25Qxx_OK) {
+      g_tx_fail++;
+    }
+  }
   (void)dac8568_soft_reset_and_rearm();
   DAC8568_DMA_Start();
 }
