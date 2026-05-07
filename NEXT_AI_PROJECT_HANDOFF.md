@@ -107,6 +107,19 @@ SD 卡目标路径固定为：
 0:/wave/igbt_fault.bin
 ```
 
+播放端量程契约：
+
+| 项 | 当前约定 |
+| --- | --- |
+| DAC8568 实际模拟输出 | `-5V ~ +5V` 低压模拟量 |
+| A/B 母线工程满量程 | `-500V ~ +500V` |
+| A/B 换算关系 | `1V` 模拟量 = `100V` 工程母线电压 |
+| 正常正母线 A | 约 `+3.0V` 模拟量，即约 `+300V` 工程量 |
+| 正常负母线 B | 约 `-3.0V` 模拟量，即约 `-300V` 工程量 |
+| AI 训练输入 | 同一低压模拟量的 `mV` 表示，正常约 `+3000mV/-3000mV` |
+
+注意：播放端不把波形直接生成为 `±500V` 数值，也不把正常状态顶到 `±5V` 满量程。`±5V` 是 DAC/ADC 低压模拟满量程；工程物理量换算由监测端和云端显示链路完成。
+
 波形文件格式：
 
 | 参数 | 当前值 |
@@ -115,7 +128,9 @@ SD 卡目标路径固定为：
 | 单文件大小 | `4194304 bytes`，即 4MB |
 | 通道数 | 4 |
 | 样本类型 | 每通道 `uint16` DAC code |
-| 单文件样本点 | `524280` |
+| 单文件样本点 | `516088` |
+| 数据区大小 | `4128704 bytes` |
+| 分区尾部 guard | `65536 bytes` |
 | 文件结构 | `SD_DacWaveHeader_t` + A/B/C/D 交织数据 |
 
 通道语义：
@@ -139,7 +154,7 @@ SD 卡目标路径固定为：
 | 5 | `pwm_abnormal.bin` | PWM 异常 | 占空比抖动、丢脉冲、控制异常 | 载波及边带异常，电流调制 |
 | 6 | `igbt_fault.bin` | IGBT 故障 | 短路、退饱和、保护钳位 | 瞬态尖峰、电流突增、保护恢复 |
 
-本次验证中，7 个本地 SD 波形文件均为 4MB，采样率 `102400 Hz`，4 通道，checksum 全部通过。
+本次验证中，7 个本地 SD 波形文件均为 4MB，采样率 `102400 Hz`，样本数 `516088`，4 通道，checksum 全部通过。`normal.bin` 的 A/B 均值约为 `+3.0000V/-3.0000V`，按工程量解释约为 `+300V/-300V`。
 
 ## 5. W25Q256 分区与同步机制
 
@@ -182,7 +197,7 @@ SD 卡目标路径固定为：
 [WAVE] sync skip/already current: part=pwm_abnormal(5) checksum=0xA3E5B3CA addr=0x91800040
 [WAVE] sync skip/already current: part=igbt_fault(6) checksum=0x3336670E addr=0x91C00040
 [DAC WAVE] full sync done: ready_mask=0x7F sd_sync_mask=0x7F
-[DAC WAVE] baseline source=QSPI sps=102400 count=524280 addr=0x90400040
+[DAC WAVE] baseline source=QSPI sps=102400 count=516088 addr=0x90400040
 [DAC] start sps=102400
 [DAC] ok=... fail=0 skip=0 rec=0 reason=0 ready=0x7F sd=0x7F boot=1 stream=1 src=0 mmap=1 busy=0
 ```
@@ -224,14 +239,14 @@ SD 卡目标路径固定为：
 本次已强化触发日志。PWM 故障触发成功时应出现类似：
 
 ```text
-[DAC BURST] request: id=4 part=5 addr=0x91800040 count=524280 ret=0
+[DAC BURST] request: id=4 part=5 addr=0x91800040 count=516088 ret=0
 [DAC BURST] trigger ok: id=4 dur=10s
 ```
 
 故障结束或停止后会切回 normal：
 
 ```text
-[DAC BURST] baseline request: addr=0x90400040 count=524280 ret=0
+[DAC BURST] baseline request: addr=0x90400040 count=516088 ret=0
 ```
 
 UI 状态读取已改为临界区快照，避免 UI 任务读到不一致的 `ready_mask`、当前故障 ID 或剩余时间。
@@ -404,7 +419,7 @@ COM8:
 [WAVE] sync skip/already current: part=normal(0) checksum=0x35B7277B addr=0x90400040
 [WAVE] sync skip/already current: part=pwm_abnormal(5) checksum=0xA3E5B3CA addr=0x91800040
 [DAC WAVE] full sync done: ready_mask=0x7F sd_sync_mask=0x7F
-[DAC WAVE] baseline source=QSPI sps=102400 count=524280 addr=0x90400040
+[DAC WAVE] baseline source=QSPI sps=102400 count=516088 addr=0x90400040
 [DAC] ... ready=0x7F sd=0x7F boot=1 stream=1 src=0 mmap=1 busy=0
 ```
 

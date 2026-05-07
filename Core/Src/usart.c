@@ -77,6 +77,7 @@ void MX_USART1_UART_Init(void)
   /* USER CODE END USART1_Init 2 */
 
 }
+
 void HAL_UART_MspInit(UART_HandleTypeDef* uartHandle)
 {
 

@@ -336,6 +336,7 @@ const osThreadAttr_t Main_attributes = {
   .stack_size = 8192 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
+
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
 extern const osMutexAttr_t Thread_Mutex_attr;

@@ -2,11 +2,17 @@
 """
 Generate 7 x 4MB DAC8568 waveform binaries for SD -> W25Q256 full-sync.
 
-Channel semantics (external domain, +/-5V):
-  A: DC bus positive voltage (bipolar, normal positive)
-  B: DC bus negative voltage (bipolar, normal negative)
+Channel semantics (DAC/ADC low-voltage analog domain, -5V..+5V):
+  A: DC bus positive voltage (bipolar, normal +3V analog ~= +300V engineering)
+  B: DC bus negative voltage (bipolar, normal -3V analog ~= -300V engineering)
   C: Load current (unipolar, >=0)
   D: Leakage current (unipolar, >=0)
+
+Scale contract:
+  - DAC8568 output remains a low-voltage analog signal in the -5V..+5V range.
+  - For A/B bus channels, -5V..+5V analog is interpreted as -500V..+500V engineering full scale.
+  - Therefore 1V analog = 100V bus engineering value; +/-5V is full scale, not the normal operating point.
+  - The normal baseline uses A ~= +3.0V and B ~= -3.0V, equivalent to about +300V/-300V.
 
 Target SD paths on MCU:
   0:/wave/normal.bin
@@ -35,7 +41,8 @@ VERSION = 1
 CHANNELS = 4
 DATA_OFFSET = 64
 
-# The existing firmware code maps +/-5V "external" to DAC input around 1.25..3.75V with a 2.5V ref.
+# The firmware maps -5V..+5V low-voltage analog domain to DAC input around 1.25..3.75V with a 2.5V ref.
+# A/B engineering display scale is applied by the monitoring/cloud side, not by this playback generator.
 VREF_MV = 2500.0
 VOUT_MAX = 5.0
 VOUT_MIN = -5.0

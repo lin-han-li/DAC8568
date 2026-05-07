@@ -160,13 +160,13 @@ int main(void)
    * Fix DAC output spikes during UI key/page switching:
    *
    * - FreeRTOS masks interrupts at and below configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY (5)
-   *   when entering critical sections (BASEPRI). CubeMX currently configures SPI1 TX DMA
-   *   (DMA1_Stream4_IRQn) at priority 5, so it can be delayed long enough to miss the
-   *   circular DMA refill window, producing waveform glitches.
-   * - Raise the DAC streaming DMA IRQ priority above 5 (numerically smaller) so it is not
-   *   masked by RTOS critical sections. Keep UI EXTI keys at a lower priority.
+   *   when entering critical sections (BASEPRI). CubeMX keeps the SPI1 TX DMA
+   *   (DMA1_Stream4_IRQn) and SPI1 IRQ at priority 5 while FreeRTOS is enabled.
+   * - The DAC streaming ISR path intentionally overrides those two IRQs to priority 4
+   *   at runtime so circular DMA refill is not blocked by RTOS critical sections.
+   *   Keep UI EXTI keys at a lower priority.
    *
-   * NOTE: For long-term maintainability, mirror these priorities in CubeMX (NVIC tab).
+   * NOTE: DMA1_Stream4/SPI1 callbacks must not call FreeRTOS APIs while priority is 4.
    */
   HAL_NVIC_SetPriority(DMA1_Stream4_IRQn, 4, 0);
   HAL_NVIC_SetPriority(SPI1_IRQn, 4, 0);

@@ -22,9 +22,16 @@ Notes:
 - Baseline output requires SD sync by default (see `DAC_WAVE_REQUIRE_SD_SYNC` in `Core/Inc/main.h`).
 - If baseline isn't ready, firmware outputs no waveform (stream disabled).
 
-Channel semantics (external domain, +/-5V):
-- A: DC bus positive voltage (bipolar, normal positive)
-- B: DC bus negative voltage (bipolar, normal negative)
+Scale convention:
+- DAC8568 output is a low-voltage analog signal in the -5V..+5V range.
+- A/B bus channels use -5V..+5V analog as -500V..+500V engineering full scale.
+- 1V analog = 100V bus engineering value.
+- Normal bus is not full scale: A ~ +3.0V means about +300V, B ~ -3.0V means about -300V.
+- AI training uses the same low-voltage analog value expressed in mV, so +3.0V/-3.0V corresponds to +3000mV/-3000mV.
+
+Channel semantics (DAC/ADC low-voltage analog domain):
+- A: DC bus positive voltage (bipolar, normal positive, +3V analog ~= +300V engineering)
+- B: DC bus negative voltage (bipolar, normal negative, -3V analog ~= -300V engineering)
 - C: Load current (unipolar, >=0)
 - D: Leakage current (unipolar, >=0)
 
@@ -45,3 +52,10 @@ Fault waveforms:
 
 Default sample rate in generated files:
 - 102400 Hz
+
+Current generated file layout:
+- File size: 4194304 bytes (4MB)
+- Header size: 64 bytes
+- Playable sample_count: 516088 samples
+- Data bytes covered by checksum: 4128704 bytes
+- Tail guard: 65536 bytes reserved at the end of each 4MB W25Q256 partition
