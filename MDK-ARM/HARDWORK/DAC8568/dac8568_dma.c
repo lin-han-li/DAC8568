@@ -76,6 +76,7 @@
 #define DAC8568_INTERNAL_REF_ALWAYS_ON_FRAME ((((uint32_t)DAC8568_CMD_FLEXIBLE_REF) << 24) | 0x0A0000u)
 #define DAC8568_STAGNANT_WINDOW_MS 40u
 #define DAC8568_STAGNANT_LIMIT 3u
+#define DAC8568_REF_REFRESH_MS 1000u
 #define DAC8568_QSPI_MMAP_BASE 0x90000000u
 #define DAC8568_QSPI_MMAP_LIMIT 0x92000000u
 /*
@@ -120,6 +121,7 @@ static volatile uint32_t g_recover_count = 0u;
 static volatile uint32_t g_recover_reason = DAC8568_RECOVER_REASON_NONE;
 static volatile uint32_t g_ref_rearm_count = 0u;
 static volatile uint32_t g_ref_refresh_count = 0u;
+static volatile uint8_t g_ref_refresh_pending = 0u;
 static volatile uint8_t g_manual_recover_pending = 0u;
 static volatile uint32_t g_manual_recover_count = 0u;
 static volatile uint32_t g_stagnant_count = 0u;
@@ -127,6 +129,7 @@ static volatile uint32_t g_stagnant_count = 0u;
 static uint32_t g_service_last_tick = 0u;
 static uint32_t g_service_last_samples = 0u;
 static uint32_t g_service_last_fail = 0u;
+static uint32_t g_service_last_ref_refresh_tick = 0u;
 static volatile DAC8568_SourceMode_t g_source_mode = DAC8568_SOURCE_LUT;
 static const uint16_t *g_qspi_wave_data[DAC8568_QSPI_SOURCE_MAX] = {0};
 static uint32_t g_qspi_wave_samples[DAC8568_QSPI_SOURCE_MAX] = {0};
@@ -496,6 +499,20 @@ static void dac8568_fill_samples(uint32_t *dst, uint32_t sample_count) {
   g_tick_count += sample_count;
   g_sample_count += sample_count;
   g_tx_ok += sample_count;
+
+  if ((g_ref_refresh_pending != 0u) && (sample_count > 0u)) {
+    /*
+     * In-stream maintenance: refresh DAC8568 reference/clear-code state without
+     * stopping TIM12/SPI DMA. This replaces only two 32-bit frames in one refill,
+     * so it avoids the visible blank interval caused by a full SPI restart.
+     */
+    g_ref_refresh_pending = 0u;
+    dst_base[0] = DAC8568_INTERNAL_REF_ALWAYS_ON_FRAME;
+    if ((sample_count * DAC8568_WORDS_PER_SAMPLE) > 1u) {
+      dst_base[1] = DAC8568_CLR_IGNORE_FRAME;
+    }
+    g_ref_refresh_count++;
+  }
 }
 
 static void dac8568_dma_on_half(void) {
@@ -604,6 +621,7 @@ void DAC8568_DMA_Start(void) {
   g_service_last_samples = dac8568_get_tx_sample_counter();
   g_service_last_fail = g_tx_fail;
   g_service_last_tick = HAL_GetTick();
+  g_service_last_ref_refresh_tick = g_service_last_tick;
 }
 
 void DAC8568_DMA_OnTimerTick(void) {
@@ -673,6 +691,14 @@ void DAC8568_DMA_Service(void) {
     recover_reason |= DAC8568_RECOVER_REASON_MANUAL;
   }
 
+  if ((DAC8568_REF_REFRESH_MS != 0u) &&
+      ((now - g_service_last_ref_refresh_tick) >= DAC8568_REF_REFRESH_MS)) {
+    g_service_last_ref_refresh_tick = now;
+    HAL_GPIO_WritePin(DAC8568_CLR_GPIO_Port, DAC8568_CLR_Pin, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(DAC8568_LDAC_GPIO_Port, DAC8568_LDAC_Pin, GPIO_PIN_RESET);
+    g_ref_refresh_pending = 1u;
+  }
+
   if (fails != g_service_last_fail) {
     g_service_last_fail = fails;
     recover_reason |= DAC8568_RECOVER_REASON_SPI_ERROR;
@@ -701,7 +727,6 @@ void DAC8568_DMA_Service(void) {
   if ((recover_reason & DAC8568_RECOVER_REASON_MANUAL) != 0u) {
     g_manual_recover_count++;
   }
-
   dac8568_set_stream_running(0u);
   dac8568_tim12_stop();
   (void)HAL_SPI_Abort(&hspi1);

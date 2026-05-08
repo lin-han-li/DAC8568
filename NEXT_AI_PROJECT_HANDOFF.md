@@ -442,3 +442,37 @@ COM8:
 ```powershell
 powershell -ExecutionPolicy Bypass -File tools\check_keil_audit.ps1
 ```
+
+## 14. 2026-05-07 SD Flag Controlled Wave Sync
+
+Boot sync is no longer unconditional. The firmware now checks this one-shot
+marker on the SD card:
+
+```text
+0:/wave/SYNC_NOW.TXT
+```
+
+Rules:
+
+- Marker exists: run SD -> W25Q256 sync for all 7 DAC wave partitions.
+- All 7 partitions synced successfully: delete `SYNC_NOW.TXT` automatically.
+- Marker missing: skip SD sync and load existing valid W25Q256 wave metadata.
+- `DAC_WAVE_REQUIRE_SD_SYNC=0` remains intentional, so a valid W25Q256 baseline
+  can still start when the SD card is absent or when no marker is present.
+
+Expected logs when the marker is present:
+
+```text
+[DAC WAVE] SD sync flag found: 0:/wave/SYNC_NOW.TXT size=...
+[DAC] init ok, SD sync flag requested full sync in RTOS
+[DAC WAVE] full sync done: ready_mask=0x7F sd_sync_mask=0x7F
+[DAC WAVE] SD sync flag cleared: 0:/wave/SYNC_NOW.TXT
+```
+
+Expected logs when the marker is absent:
+
+```text
+[DAC WAVE] SD sync flag absent: 0:/wave/SYNC_NOW.TXT stat=4
+[DAC] init ok, SD sync not requested
+[DAC WAVE] boot load begin(from QSPI): partitions=7
+```

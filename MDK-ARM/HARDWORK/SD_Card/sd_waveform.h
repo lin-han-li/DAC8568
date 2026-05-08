@@ -24,20 +24,20 @@
 #define SD_DAC_QSPI_PARTITION_SIZE  0x00400000u
 #define SD_DAC_QSPI_PART0_OFFSET (SD_DAC_QSPI_BASE_OFFSET + 0x000000u) /* normal */
 #define SD_DAC_QSPI_PART1_OFFSET (SD_DAC_QSPI_BASE_OFFSET + 0x400000u) /* ac coupling */
-#define SD_DAC_QSPI_PART2_OFFSET (SD_DAC_QSPI_BASE_OFFSET + 0x800000u) /* bus ground */
-#define SD_DAC_QSPI_PART3_OFFSET (SD_DAC_QSPI_BASE_OFFSET + 0xC00000u) /* insulation */
-#define SD_DAC_QSPI_PART4_OFFSET (SD_DAC_QSPI_BASE_OFFSET + 0x1000000u) /* cap aging */
-#define SD_DAC_QSPI_PART5_OFFSET (SD_DAC_QSPI_BASE_OFFSET + 0x1400000u) /* pwm abnormal */
-#define SD_DAC_QSPI_PART6_OFFSET (SD_DAC_QSPI_BASE_OFFSET + 0x1800000u) /* igbt fault */
+#define SD_DAC_QSPI_PART2_OFFSET (SD_DAC_QSPI_BASE_OFFSET + 0x800000u) /* insulation */
+#define SD_DAC_QSPI_PART3_OFFSET (SD_DAC_QSPI_BASE_OFFSET + 0xC00000u) /* cap aging */
+#define SD_DAC_QSPI_PART4_OFFSET (SD_DAC_QSPI_BASE_OFFSET + 0x1000000u) /* igbt fault */
+#define SD_DAC_QSPI_PART5_OFFSET (SD_DAC_QSPI_BASE_OFFSET + 0x1400000u) /* bus ground */
+#define SD_DAC_QSPI_PART6_OFFSET (SD_DAC_QSPI_BASE_OFFSET + 0x1800000u) /* pwm abnormal */
 
 typedef enum {
 	SD_DAC_WAVE_PART_NORMAL = 0u,         /* 正常波形 */
 	SD_DAC_WAVE_PART_AC_COUPLING = 1u,    /* 交流窜入 */
-	SD_DAC_WAVE_PART_BUS_GROUND = 2u,     /* 母线接地 */
-	SD_DAC_WAVE_PART_INSULATION = 3u,     /* 绝缘劣化 */
-	SD_DAC_WAVE_PART_CAP_AGING = 4u,      /* 电容老化 */
-	SD_DAC_WAVE_PART_PWM_ABNORMAL = 5u,   /* PWM异常 */
-	SD_DAC_WAVE_PART_IGBT_FAULT = 6u      /* IGBT故障 */
+	SD_DAC_WAVE_PART_INSULATION = 2u,     /* 绝缘劣化 */
+	SD_DAC_WAVE_PART_CAP_AGING = 3u,      /* 电容老化 */
+	SD_DAC_WAVE_PART_IGBT_FAULT = 4u,     /* IGBT故障 */
+	SD_DAC_WAVE_PART_BUS_GROUND = 5u,     /* 母线接地 */
+	SD_DAC_WAVE_PART_PWM_ABNORMAL = 6u    /* PWM异常 */
 } SD_DacWavePartition_t;
 
 typedef struct {
@@ -57,6 +57,7 @@ typedef struct {
 	uint32_t qspi_data_offset;
 	uint32_t qspi_mmap_addr;
 	uint32_t partition_id;
+	uint32_t checksum;
 } SD_DacWaveInfo_t;
 
 typedef struct {

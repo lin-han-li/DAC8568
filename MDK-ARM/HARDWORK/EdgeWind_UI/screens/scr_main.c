@@ -382,9 +382,8 @@ static void placeholder_update_status(void)
     DAC_FaultBurst_GetUiState(&ready_mask, &active_fault_id_0_5, &remaining_s);
 
     const bool normal_ready = ((ready_mask & 0x1u) != 0u);
-    const uint32_t fault_bit = (s_placeholder_fault_id < EW_FAULT_COUNT)
-                                   ? (1u << (uint32_t)(s_placeholder_fault_id + 1u))
-                                   : 0u;
+    const uint8_t fault_partition = DAC_FaultBurst_GetPartitionForFaultId((uint32_t)s_placeholder_fault_id);
+    const uint32_t fault_bit = (fault_partition < 32u) ? (1u << (uint32_t)fault_partition) : 0u;
     const bool fault_ready = ((fault_bit != 0u) && ((ready_mask & fault_bit) != 0u));
 
     const char *out_cn = "正常";
@@ -463,8 +462,10 @@ static void placeholder_action_event_cb(lv_event_t *e)
             DAC_FaultBurst_GetUiState(&ready_mask, &active_fault, &remaining_s);
             (void)active_fault;
             (void)remaining_s;
+            const uint8_t fault_partition = DAC_FaultBurst_GetPartitionForFaultId((uint32_t)s_placeholder_fault_id);
             wave_ready = ((ready_mask & 0x1u) != 0u) &&
-                         ((ready_mask & (1u << (uint32_t)(s_placeholder_fault_id + 1u))) != 0u);
+                         (fault_partition < 32u) &&
+                         ((ready_mask & (1u << (uint32_t)fault_partition)) != 0u);
             if (s_placeholder_status_main_lbl) lv_label_set_text(s_placeholder_status_main_lbl, "触发失败");
             if (s_placeholder_status_sub_lbl) lv_label_set_text(s_placeholder_status_sub_lbl, wave_ready ? "系统忙，请稍后" : "波形未就绪");
             return;

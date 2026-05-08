@@ -60,6 +60,7 @@ void Error_Handler(void);
 bool DAC_FaultBurst_Trigger(uint32_t fault_id_0_5, uint32_t duration_s);
 bool DAC_FaultBurst_Stop(void);
 void DAC_FaultBurst_GetUiState(uint32_t *ready_mask, uint8_t *active_fault_id_0_5, uint32_t *remaining_s);
+uint8_t DAC_FaultBurst_GetPartitionForFaultId(uint32_t fault_id_0_5);
 bool DAC_Wave_IsBootReady(void);
 
 /* USER CODE END EFP */
@@ -118,6 +119,19 @@ bool DAC_Wave_IsBootReady(void);
 #define DAC_WAVE_SD_PATH_IGBT_FAULT "0:/wave/igbt_fault.bin"
 #endif
 
+/* One-shot SD->W25Q256 sync trigger. Create this file on SD to request sync. */
+#ifndef DAC_WAVE_SD_SYNC_FLAG_PATH
+#define DAC_WAVE_SD_SYNC_FLAG_PATH "0:/wave/SYNC_NOW.TXT"
+#endif
+
+#ifndef DAC_WAVE_SYNC_FLAG_WAIT_MS
+#define DAC_WAVE_SYNC_FLAG_WAIT_MS 12000u
+#endif
+
+#ifndef DAC_WAVE_SYNC_FLAG_RETRY_MS
+#define DAC_WAVE_SYNC_FLAG_RETRY_MS 500u
+#endif
+
 /* Backward-compatible alias: baseline partition SD path */
 #ifndef DAC_WAVE_SD_PATH
 #define DAC_WAVE_SD_PATH DAC_WAVE_SD_PATH_NORMAL
@@ -129,12 +143,22 @@ bool DAC_Wave_IsBootReady(void);
 #endif
 
 /*
- * Boot-time SD->W25Q256 full sync switch:
- * 1: every boot sync all 7 partitions from SD.
- * 0: skip SD sync on boot, only load existing wave metadata from QSPI.
+ * Boot-time SD->W25Q256 sync gate:
+ * 1: allow sync only when DAC_WAVE_SD_SYNC_FLAG_PATH exists on SD.
+ * 0: never sync from SD on boot, only load existing wave metadata from QSPI.
  */
 #ifndef DAC_WAVE_BOOT_FULL_SYNC
 #define DAC_WAVE_BOOT_FULL_SYNC 1
+#endif
+
+/* Delete the sync trigger file after all 7 partitions sync successfully. */
+#ifndef DAC_WAVE_CLEAR_SYNC_FLAG_AFTER_SUCCESS
+#define DAC_WAVE_CLEAR_SYNC_FLAG_AFTER_SUCCESS 1
+#endif
+
+/* Emergency recovery switch: 1 forces one firmware build to sync on every boot. */
+#ifndef DAC_WAVE_FORCE_SD_SYNC_ON_BOOT
+#define DAC_WAVE_FORCE_SD_SYNC_ON_BOOT 0
 #endif
 /* USER CODE END Private defines */
 

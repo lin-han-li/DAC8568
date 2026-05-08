@@ -1,0 +1,65 @@
+[
+  {
+    "class_id": 0,
+    "class_code": "E00",
+    "class_name": "normal",
+    "playback_file": "normal.bin",
+    "source_generator": "tools/gen_dac_fault_suite.py",
+    "source_fault_subtypes": ["static_normal"],
+    "source_observable_channels": ["A", "B", "C", "D"]
+  },
+  {
+    "class_id": 1,
+    "class_code": "E01",
+    "class_name": "ac_coupling",
+    "playback_file": "ac_coupling.bin",
+    "source_generator": "tools/gen_dac_fault_suite.py",
+    "source_fault_subtypes": ["static_ac_coupling"],
+    "source_observable_channels": ["A", "B", "D"]
+  },
+  {
+    "class_id": 2,
+    "class_code": "E02",
+    "class_name": "insulation",
+    "playback_file": "insulation.bin",
+    "source_generator": "tools/gen_dac_fault_suite.py",
+    "source_fault_subtypes": ["static_insulation"],
+    "source_observable_channels": ["A", "B", "D"]
+  },
+  {
+    "class_id": 3,
+    "class_code": "E03",
+    "class_name": "cap_aging",
+    "playback_file": "cap_aging.bin",
+    "source_generator": "tools/gen_dac_fault_suite.py",
+    "source_fault_subtypes": ["static_cap_aging"],
+    "source_observable_channels": ["A", "B", "C"]
+  },
+  {
+    "class_id": 4,
+    "class_code": "E04",
+    "class_name": "igbt_fault",
+    "playback_file": "igbt_fault.bin",
+    "source_generator": "tools/gen_dac_fault_suite.py",
+    "source_fault_subtypes": ["static_igbt_fault"],
+    "source_observable_channels": ["A", "B", "C"]
+  },
+  {
+    "class_id": 5,
+    "class_code": "E05",
+    "class_name": "bus_ground",
+    "playback_file": "bus_ground.bin",
+    "source_generator": "tools/gen_dac_fault_suite.py",
+    "source_fault_subtypes": ["static_bus_ground"],
+    "source_observable_channels": ["A", "B", "C", "D"]
+  },
+  {
+    "class_id": 6,
+    "class_code": "E06",
+    "class_name": "pwm_abnormal",
+    "playback_file": "pwm_abnormal.bin",
+    "source_generator": "tools/gen_dac_fault_suite.py",
+    "source_fault_subtypes": ["static_pwm_abnormal"],
+    "source_observable_channels": ["A", "B", "C"]
+  }
+]

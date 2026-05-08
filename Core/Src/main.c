@@ -191,7 +191,7 @@ int main(void)
    * Wave sync + stream start is done in RTOS (see freertos.c Main_Task). */
   DAC8568_DMA_Init(DAC_SAMPLE_RATE_HZ);
   DAC8568_OutputFixedVoltage(0.0f);
-  printf("[DAC] init ok, waiting SD sync in RTOS\r\n");
+  printf("[DAC] init ok, wave boot handled in RTOS\r\n");
 
   printf("System Start...\r\n");
 

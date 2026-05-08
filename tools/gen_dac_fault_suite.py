@@ -17,11 +17,11 @@ Scale contract:
 Target SD paths on MCU:
   0:/wave/normal.bin
   0:/wave/ac_coupling.bin
-  0:/wave/bus_ground.bin
   0:/wave/insulation.bin
   0:/wave/cap_aging.bin
-  0:/wave/pwm_abnormal.bin
   0:/wave/igbt_fault.bin
+  0:/wave/bus_ground.bin
+  0:/wave/pwm_abnormal.bin
 
 Binary format matches MDK-ARM/HARDWORK/SD_Card/sd_waveform.h (SD_DacWaveHeader_t).
 """
@@ -494,11 +494,11 @@ def main() -> int:
     suite = [
         WaveSpec("normal", "normal.bin", lambda i, r: wave_normal(i, r, ctx)),
         WaveSpec("ac_coupling", "ac_coupling.bin", lambda i, r: wave_ac_coupling(i, r, ctx)),
-        WaveSpec("bus_ground", "bus_ground.bin", lambda i, r: wave_bus_ground(i, r, ctx)),
         WaveSpec("insulation", "insulation.bin", lambda i, r: wave_insulation(i, r, ctx)),
         WaveSpec("cap_aging", "cap_aging.bin", lambda i, r: wave_cap_aging(i, r, ctx)),
-        WaveSpec("pwm_abnormal", "pwm_abnormal.bin", lambda i, r: wave_pwm_abnormal(i, r, ctx)),
         WaveSpec("igbt_fault", "igbt_fault.bin", lambda i, r: wave_igbt_fault(i, r, ctx)),
+        WaveSpec("bus_ground", "bus_ground.bin", lambda i, r: wave_bus_ground(i, r, ctx)),
+        WaveSpec("pwm_abnormal", "pwm_abnormal.bin", lambda i, r: wave_pwm_abnormal(i, r, ctx)),
     ]
 
     for spec in suite:

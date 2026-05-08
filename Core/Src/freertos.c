@@ -36,6 +36,7 @@
 #include "DAC8568/dac8568_dma.h"
 #include "qspi_w25q256.h"
 #include "sd_waveform.h"
+#include "SD.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -281,6 +282,7 @@ static int8_t W25Q256_SelfTest_CrossPageAndSector(void)
 #define DAC_FAULT_CMD_TRIGGER 1u
 #define DAC_FAULT_CMD_STOP    2u
 #define DAC_FAULT_CMD_QUEUE_LEN 8u
+#define DAC_WAVE_ALL_PART_MASK ((uint32_t)((1u << DAC_WAVE_PART_COUNT) - 1u))
 
 typedef struct {
   uint8_t type;
@@ -304,14 +306,47 @@ static volatile uint8_t s_fault_cmd_head = 0u;
 static volatile uint8_t s_fault_cmd_tail = 0u;
 static volatile uint8_t s_fault_cmd_count = 0u;
 
+/*
+ * Canonical cross-project order:
+ * E01 ac_coupling, E02 insulation, E03 cap_aging,
+ * E04 igbt_fault, E05 bus_ground, E06 pwm_abnormal.
+ */
+static const uint8_t s_dac_fault_partition_by_id[DAC_FAULT_COUNT] = {
+  SD_DAC_WAVE_PART_AC_COUPLING,
+  SD_DAC_WAVE_PART_INSULATION,
+  SD_DAC_WAVE_PART_CAP_AGING,
+  SD_DAC_WAVE_PART_IGBT_FAULT,
+  SD_DAC_WAVE_PART_BUS_GROUND,
+  SD_DAC_WAVE_PART_PWM_ABNORMAL,
+};
+
+static const char * const s_dac_fault_ai_code_by_id[DAC_FAULT_COUNT] = {
+  "E01",
+  "E02",
+  "E03",
+  "E04",
+  "E05",
+  "E06",
+};
+
+static const char * const s_dac_wave_ai_code_by_part[DAC_WAVE_PART_COUNT] = {
+  "E00",
+  "E01",
+  "E02",
+  "E03",
+  "E04",
+  "E05",
+  "E06",
+};
+
 static const char * const s_dac_wave_sd_paths[DAC_WAVE_PART_COUNT] = {
   DAC_WAVE_SD_PATH_NORMAL,
   DAC_WAVE_SD_PATH_AC_COUPLING,
-  DAC_WAVE_SD_PATH_BUS_GROUND,
   DAC_WAVE_SD_PATH_INSULATION,
   DAC_WAVE_SD_PATH_CAP_AGING,
-  DAC_WAVE_SD_PATH_PWM_ABNORMAL,
   DAC_WAVE_SD_PATH_IGBT_FAULT,
+  DAC_WAVE_SD_PATH_BUS_GROUND,
+  DAC_WAVE_SD_PATH_PWM_ABNORMAL,
 };
 
 /* USER CODE END Variables */
@@ -345,9 +380,14 @@ static void dac_fault_burst_service(void);
 static bool dac_fault_apply_trigger(uint32_t fault_id_0_5, uint32_t duration_s);
 static void dac_fault_apply_stop(void);
 static void dac_fault_queue_reset(void);
+static uint8_t dac_fault_partition_for_id(uint32_t fault_id_0_5);
 static bool dac_fault_post_command(uint8_t cmd_type, uint8_t fault_id_0_5, uint32_t duration_s);
 static bool dac_fault_fetch_command(DacFaultCommand_t *cmd_out);
 static bool dac_wave_accept_partition(uint32_t index, SD_DacWavePartition_t part, const SD_DacWaveInfo_t *info);
+static bool dac_wave_sd_sync_flag_present(void);
+static bool dac_wave_wait_for_sd_sync_flag(void);
+static void dac_wave_try_clear_sd_sync_flag(void);
+static void dac_wave_print_contract(void);
 
 /* USER CODE END FunctionPrototypes */
 
@@ -385,6 +425,98 @@ static void RtosFatalHold(const char *reason, const signed char *task_name)
   taskDISABLE_INTERRUPTS();
   for (;;)
   {
+  }
+}
+
+static bool dac_wave_sd_sync_flag_present(void)
+{
+  FILINFO info;
+  FRESULT res;
+
+  res = SD_Init();
+  if (res != FR_OK) {
+    printf("[DAC WAVE] SD sync flag check skipped: SD init=%d path=%s\r\n",
+           (int)res,
+           DAC_WAVE_SD_SYNC_FLAG_PATH);
+    return false;
+  }
+
+  memset(&info, 0, sizeof(info));
+  res = f_stat(DAC_WAVE_SD_SYNC_FLAG_PATH, &info);
+  if (res == FR_OK) {
+    printf("[DAC WAVE] SD sync flag found: %s size=%lu\r\n",
+           DAC_WAVE_SD_SYNC_FLAG_PATH,
+           (unsigned long)info.fsize);
+    return true;
+  }
+
+  printf("[DAC WAVE] SD sync flag absent: %s stat=%d\r\n",
+         DAC_WAVE_SD_SYNC_FLAG_PATH,
+         (int)res);
+  return false;
+}
+
+static bool dac_wave_wait_for_sd_sync_flag(void)
+{
+  uint32_t elapsed_ms = 0u;
+  uint32_t retry_ms = DAC_WAVE_SYNC_FLAG_RETRY_MS;
+
+  if (retry_ms == 0u) {
+    retry_ms = 500u;
+  }
+
+  printf("[DAC WAVE] waiting SD sync flag up to %lu ms: %s\r\n",
+         (unsigned long)DAC_WAVE_SYNC_FLAG_WAIT_MS,
+         DAC_WAVE_SD_SYNC_FLAG_PATH);
+
+  for (;;) {
+    if (dac_wave_sd_sync_flag_present()) {
+      if (elapsed_ms != 0u) {
+        printf("[DAC WAVE] SD sync flag became ready after %lu ms\r\n",
+               (unsigned long)elapsed_ms);
+      }
+      return true;
+    }
+
+    if (elapsed_ms >= DAC_WAVE_SYNC_FLAG_WAIT_MS) {
+      break;
+    }
+
+    osDelay(retry_ms);
+    elapsed_ms += retry_ms;
+  }
+
+  printf("[DAC WAVE] SD sync flag wait timeout after %lu ms, fallback to QSPI\r\n",
+         (unsigned long)elapsed_ms);
+  return false;
+}
+
+static void dac_wave_try_clear_sd_sync_flag(void)
+{
+#if (DAC_WAVE_CLEAR_SYNC_FLAG_AFTER_SUCCESS != 0)
+  FRESULT res = f_unlink(DAC_WAVE_SD_SYNC_FLAG_PATH);
+  if ((res == FR_OK) || (res == FR_NO_FILE)) {
+    printf("[DAC WAVE] SD sync flag cleared: %s\r\n", DAC_WAVE_SD_SYNC_FLAG_PATH);
+  } else {
+    printf("[DAC WAVE] SD sync flag clear failed: %s err=%d\r\n",
+           DAC_WAVE_SD_SYNC_FLAG_PATH,
+           (int)res);
+  }
+#else
+  printf("[DAC WAVE] SD sync flag kept by config: %s\r\n", DAC_WAVE_SD_SYNC_FLAG_PATH);
+#endif
+}
+
+static void dac_wave_print_contract(void)
+{
+  printf("[DAC WAVE] canonical order: E00 normal, E01 ac_coupling, E02 insulation, E03 cap_aging, E04 igbt_fault, E05 bus_ground, E06 pwm_abnormal\r\n");
+  for (uint32_t i = 0u; i < DAC_WAVE_PART_COUNT; i++) {
+    SD_DacWavePartition_t part = (SD_DacWavePartition_t)i;
+    printf("[DAC WAVE] contract: part=%lu code=%s name=%s path=%s\r\n",
+           (unsigned long)i,
+           s_dac_wave_ai_code_by_part[i],
+           SD_Wave_GetPartitionName(part),
+           s_dac_wave_sd_paths[i]);
   }
 }
 
@@ -530,8 +662,9 @@ void Main_Task(void *argument)
 {
   /* USER CODE BEGIN Main_Task */
   uint8_t stream_enabled = 0u;
+  uint8_t do_boot_sync = 0u;
+  uint8_t sync_mutex_locked = 0u;
   uint32_t started_sps = 0u;
-  const uint8_t do_boot_sync = (DAC_WAVE_BOOT_FULL_SYNC != 0u) ? 1u : 0u;
 
   memset(s_dac_wave_info, 0, sizeof(s_dac_wave_info));
   s_dac_wave_ready_mask = 0u;
@@ -542,55 +675,114 @@ void Main_Task(void *argument)
   s_fault_end_tick = 0;
   s_fault_remaining_s = 0u;
   dac_fault_queue_reset();
+  dac_wave_print_contract();
 
   /* NOTE: FatFs SD driver (FATFS/Target/sd_diskio.c) gates SD_initialize() on
    * osKernelRunning(), so SD mount/sync must happen after scheduler start. */
+  if (DAC_WAVE_FORCE_SD_SYNC_ON_BOOT != 0u) {
+    do_boot_sync = 1u;
+    printf("[DAC WAVE] FORCE SD sync on boot enabled by firmware build\r\n");
+  } else if (DAC_WAVE_BOOT_FULL_SYNC != 0u) {
+    do_boot_sync = dac_wave_wait_for_sd_sync_flag() ? 1u : 0u;
+  }
+
   if (do_boot_sync != 0u) {
-    printf("[DAC] init ok, waiting SD full sync in RTOS\r\n");
-    printf("[DAC WAVE] full sync begin: partitions=%lu\r\n", (unsigned long)DAC_WAVE_PART_COUNT);
+    printf("[DAC] init ok, SD sync flag requested full sync in RTOS\r\n");
+    printf("[DAC WAVE] full sync begin: flag=%s partitions=%lu\r\n",
+           DAC_WAVE_SD_SYNC_FLAG_PATH,
+           (unsigned long)DAC_WAVE_PART_COUNT);
   } else {
-    printf("[DAC] init ok, boot full sync disabled\r\n");
+    printf("[DAC] init ok, SD sync not requested\r\n");
     printf("[DAC WAVE] boot load begin(from QSPI): partitions=%lu\r\n",
            (unsigned long)DAC_WAVE_PART_COUNT);
   }
 
-  for (uint32_t i = 0u; i < DAC_WAVE_PART_COUNT; i++) {
-    SD_DacWavePartition_t part = (SD_DacWavePartition_t)i;
-    SD_DacWaveInfo_t info = {0};
-    const char *path = s_dac_wave_sd_paths[i];
-    if (do_boot_sync != 0u) {
-      printf("[DAC WAVE] syncing partition %lu/%lu: %s\r\n",
+  if (do_boot_sync != 0u) {
+    uint32_t attempt = 0u;
+
+    if (mutex_id) {
+      osMutexAcquire(mutex_id, osWaitForever);
+      sync_mutex_locked = 1u;
+      printf("[DAC WAVE] locked LVGL mutex during SD->W25Q sync\r\n");
+    }
+
+    for (;;) {
+      attempt++;
+      s_dac_wave_ready_mask = 0u;
+      s_dac_wave_sd_sync_mask = 0u;
+      memset(s_dac_wave_info, 0, sizeof(s_dac_wave_info));
+
+      printf("[DAC WAVE] full sync attempt %lu begin\r\n", (unsigned long)attempt);
+
+      for (uint32_t i = 0u; i < DAC_WAVE_PART_COUNT; i++) {
+        SD_DacWavePartition_t part = (SD_DacWavePartition_t)i;
+        SD_DacWaveInfo_t info = {0};
+        const char *path = s_dac_wave_sd_paths[i];
+
+        printf("[DAC WAVE] syncing partition %lu/%lu: code=%s part=%s path=%s\r\n",
+               (unsigned long)(i + 1u),
+               (unsigned long)DAC_WAVE_PART_COUNT,
+               s_dac_wave_ai_code_by_part[i],
+               SD_Wave_GetPartitionName(part),
+               (path != NULL) ? path : "(null)");
+
+        if (SD_Wave_SyncDacToQspiPartition(path, part, &info) &&
+            dac_wave_accept_partition(i, part, &info)) {
+          s_dac_wave_sd_sync_mask |= (1u << i);
+          continue;
+        }
+
+        printf("[DAC WAVE] SD sync failed: part=%s path=%s\r\n",
+               SD_Wave_GetPartitionName(part),
+               (path != NULL) ? path : "(null)");
+      }
+
+      printf("[DAC WAVE] full sync attempt %lu done: ready_mask=0x%02lX sd_sync_mask=0x%02lX\r\n",
+             (unsigned long)attempt,
+             (unsigned long)s_dac_wave_ready_mask,
+             (unsigned long)s_dac_wave_sd_sync_mask);
+
+      if ((s_dac_wave_sd_sync_mask & DAC_WAVE_ALL_PART_MASK) == DAC_WAVE_ALL_PART_MASK) {
+        dac_wave_try_clear_sd_sync_flag();
+        break;
+      }
+
+      printf("[DAC WAVE] full sync incomplete, system boot is blocked until sync succeeds: synced=0x%02lX expected=0x%02lX\r\n",
+             (unsigned long)s_dac_wave_sd_sync_mask,
+             (unsigned long)DAC_WAVE_ALL_PART_MASK);
+      osDelay(2000);
+    }
+
+    if (sync_mutex_locked != 0u) {
+      osMutexRelease(mutex_id);
+      sync_mutex_locked = 0u;
+      printf("[DAC WAVE] unlocked LVGL mutex after SD->W25Q sync\r\n");
+    }
+  } else {
+    for (uint32_t i = 0u; i < DAC_WAVE_PART_COUNT; i++) {
+      SD_DacWavePartition_t part = (SD_DacWavePartition_t)i;
+      SD_DacWaveInfo_t info = {0};
+
+      printf("[DAC WAVE] loading partition %lu/%lu from QSPI: code=%s part=%s\r\n",
              (unsigned long)(i + 1u),
              (unsigned long)DAC_WAVE_PART_COUNT,
+             s_dac_wave_ai_code_by_part[i],
              SD_Wave_GetPartitionName(part));
 
-      if (SD_Wave_SyncDacToQspiPartition(path, part, &info) &&
+      if (SD_Wave_LoadDacInfoFromQspiPartition(part, &info) &&
           dac_wave_accept_partition(i, part, &info)) {
-        s_dac_wave_sd_sync_mask |= (1u << i);
+        printf("[DAC WAVE] load from QSPI ok: code=%s part=%s sps=%lu count=%lu checksum=0x%08lX addr=0x%08lX\r\n",
+               s_dac_wave_ai_code_by_part[i],
+               SD_Wave_GetPartitionName(part),
+               (unsigned long)info.sample_rate_hz,
+               (unsigned long)info.sample_count,
+               (unsigned long)info.checksum,
+               (unsigned long)info.qspi_mmap_addr);
         continue;
       }
 
-      printf("[DAC WAVE] SD sync failed: part=%s path=%s\r\n",
-             SD_Wave_GetPartitionName(part),
-             (path != NULL) ? path : "(null)");
-    } else {
-      printf("[DAC WAVE] loading partition %lu/%lu from QSPI: %s\r\n",
-             (unsigned long)(i + 1u),
-             (unsigned long)DAC_WAVE_PART_COUNT,
-             SD_Wave_GetPartitionName(part));
+      printf("[DAC WAVE] partition not ready: part=%s\r\n", SD_Wave_GetPartitionName(part));
     }
-
-    if (SD_Wave_LoadDacInfoFromQspiPartition(part, &info) &&
-        dac_wave_accept_partition(i, part, &info)) {
-      printf("[DAC WAVE] load from QSPI ok: part=%s sps=%lu count=%lu addr=0x%08lX\r\n",
-             SD_Wave_GetPartitionName(part),
-             (unsigned long)info.sample_rate_hz,
-             (unsigned long)info.sample_count,
-             (unsigned long)info.qspi_mmap_addr);
-      continue;
-    }
-
-    printf("[DAC WAVE] partition not ready: part=%s\r\n", SD_Wave_GetPartitionName(part));
   }
 
   s_dac_wave_boot_sync_done = 1u;
@@ -614,10 +806,11 @@ void Main_Task(void *argument)
     {
       SD_DacWaveInfo_t *base = &s_dac_wave_info[0];
       if (DAC8568_DMA_UseQspiWave(base->qspi_mmap_addr, base->sample_count, base->sample_rate_hz) == 0) {
-        printf("[DAC WAVE] baseline source=QSPI sps=%lu count=%lu addr=0x%08lX\r\n",
-               (unsigned long)base->sample_rate_hz,
-               (unsigned long)base->sample_count,
-               (unsigned long)base->qspi_mmap_addr);
+      printf("[DAC WAVE] baseline source=QSPI sps=%lu count=%lu checksum=0x%08lX addr=0x%08lX\r\n",
+             (unsigned long)base->sample_rate_hz,
+             (unsigned long)base->sample_count,
+             (unsigned long)base->checksum,
+             (unsigned long)base->qspi_mmap_addr);
         stream_enabled = 1u;
         started_sps = base->sample_rate_hz;
       } else {
@@ -722,11 +915,14 @@ static bool dac_wave_accept_partition(uint32_t index, SD_DacWavePartition_t part
   }
 
   safe_samples = DAC8568_DMA_GetQspiSafeSamples(info->qspi_mmap_addr, info->sample_count);
-  printf("[DAC WAVE] partition check: part=%s(%lu) header_count=%lu safe_samples=%lu addr=0x%08lX\r\n",
+  printf("[DAC WAVE] partition check: code=%s part=%s(%lu) path=%s header_count=%lu safe_samples=%lu checksum=0x%08lX addr=0x%08lX\r\n",
+         s_dac_wave_ai_code_by_part[index],
          SD_Wave_GetPartitionName(part),
          (unsigned long)part,
+         s_dac_wave_sd_paths[index],
          (unsigned long)info->sample_count,
          (unsigned long)safe_samples,
+         (unsigned long)info->checksum,
          (unsigned long)info->qspi_mmap_addr);
 
   if (safe_samples != info->sample_count) {
@@ -747,6 +943,18 @@ bool DAC_Wave_IsBootReady(void)
   return (s_dac_wave_boot_sync_done != 0u) &&
          (s_dac_stream_started != 0u) &&
          dac_wave_partition_ready(0u);
+}
+
+bool edgewind_ui_can_show_enter_button(void)
+{
+  return DAC_Wave_IsBootReady();
+}
+
+void edgewind_ui_on_before_enter_button(void)
+{
+  if (!DAC_Wave_IsBootReady()) {
+    edgewind_ui_log_set("SD->W25Q waveform sync...");
+  }
 }
 
 static void dac_fault_queue_reset(void)
@@ -833,15 +1041,23 @@ static bool dac_fault_fetch_command(DacFaultCommand_t *cmd_out)
   return fetched;
 }
 
+static uint8_t dac_fault_partition_for_id(uint32_t fault_id_0_5)
+{
+  if (fault_id_0_5 >= DAC_FAULT_COUNT) {
+    return 0xFFu;
+  }
+  return s_dac_fault_partition_by_id[fault_id_0_5];
+}
+
 static bool dac_fault_apply_trigger(uint32_t fault_id_0_5, uint32_t duration_s)
 {
-  const uint8_t partition = (uint8_t)(fault_id_0_5 + 1u);
+  const uint8_t partition = dac_fault_partition_for_id(fault_id_0_5);
   const uint32_t dur_s = dac_fault_clamp_duration_s(duration_s);
   const TickType_t now = xTaskGetTickCount();
   const TickType_t delta = pdMS_TO_TICKS(dur_s * 1000u);
   int32_t req_ret = 0;
 
-  if (fault_id_0_5 >= DAC_FAULT_COUNT) {
+  if (partition >= DAC_WAVE_PART_COUNT) {
     printf("[DAC BURST] trigger reject invalid id=%lu\r\n",
            (unsigned long)fault_id_0_5);
     return false;
@@ -868,11 +1084,14 @@ static bool dac_fault_apply_trigger(uint32_t fault_id_0_5, uint32_t duration_s)
                                         s_dac_wave_info[partition].qspi_mmap_addr,
                                         s_dac_wave_info[partition].sample_count,
                                         true);
-  printf("[DAC BURST] request: id=%lu part=%u addr=0x%08lX count=%lu ret=%ld\r\n",
+  printf("[DAC BURST] request: id=%lu code=%s part=%s(%u) addr=0x%08lX count=%lu checksum=0x%08lX ret=%ld\r\n",
          (unsigned long)fault_id_0_5,
+         s_dac_fault_ai_code_by_id[fault_id_0_5],
+         SD_Wave_GetPartitionName((SD_DacWavePartition_t)partition),
          (unsigned)partition,
          (unsigned long)s_dac_wave_info[partition].qspi_mmap_addr,
          (unsigned long)s_dac_wave_info[partition].sample_count,
+         (unsigned long)s_dac_wave_info[partition].checksum,
          (long)req_ret);
   if (req_ret != 0) {
     return false;
@@ -899,9 +1118,10 @@ static void dac_fault_apply_stop(void)
                                         s_dac_wave_info[0].qspi_mmap_addr,
                                         s_dac_wave_info[0].sample_count,
                                         false);
-  printf("[DAC BURST] baseline request: addr=0x%08lX count=%lu ret=%ld\r\n",
+  printf("[DAC BURST] baseline request: addr=0x%08lX count=%lu checksum=0x%08lX ret=%ld\r\n",
          (unsigned long)s_dac_wave_info[0].qspi_mmap_addr,
          (unsigned long)s_dac_wave_info[0].sample_count,
+         (unsigned long)s_dac_wave_info[0].checksum,
          (long)req_ret);
 
   s_fault_active_id_0_5 = 0xFFu;
@@ -911,9 +1131,9 @@ static void dac_fault_apply_stop(void)
 
 bool DAC_FaultBurst_Trigger(uint32_t fault_id_0_5, uint32_t duration_s)
 {
-  const uint8_t partition = (uint8_t)(fault_id_0_5 + 1u);
+  const uint8_t partition = dac_fault_partition_for_id(fault_id_0_5);
 
-  if (fault_id_0_5 >= DAC_FAULT_COUNT) {
+  if (partition >= DAC_WAVE_PART_COUNT) {
     return false;
   }
   if (s_dac_wave_boot_sync_done == 0u || s_dac_stream_started == 0u) {
@@ -929,6 +1149,11 @@ bool DAC_FaultBurst_Trigger(uint32_t fault_id_0_5, uint32_t duration_s)
     return false;
   }
   return true;
+}
+
+uint8_t DAC_FaultBurst_GetPartitionForFaultId(uint32_t fault_id_0_5)
+{
+  return dac_fault_partition_for_id(fault_id_0_5);
 }
 
 bool DAC_FaultBurst_Stop(void)

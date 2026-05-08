@@ -1,0 +1,2 @@
+Create this file on the SD card to request one SD-to-W25Q256 waveform sync.
+The firmware deletes it after all 7 partitions sync successfully.

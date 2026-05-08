@@ -13,6 +13,7 @@
 #define SD_DAC_WAVE_ERASE_UNIT 0x00010000u
 #define SD_DAC_WAVE_MMAP_BASE 0x90000000u
 #define SD_DAC_WAVE_IO_CHUNK 4096u
+#define SD_DAC_WAVE_CHECKSUM_SEED 2166136261u
 
 static bool sd_dac_wave_partition_valid(SD_DacWavePartition_t partition)
 {
@@ -32,11 +33,11 @@ const char *SD_Wave_GetPartitionName(SD_DacWavePartition_t partition)
 	switch (partition) {
 	case SD_DAC_WAVE_PART_NORMAL: return "normal";
 	case SD_DAC_WAVE_PART_AC_COUPLING: return "ac_coupling";
-	case SD_DAC_WAVE_PART_BUS_GROUND: return "bus_ground";
 	case SD_DAC_WAVE_PART_INSULATION: return "insulation";
 	case SD_DAC_WAVE_PART_CAP_AGING: return "cap_aging";
-	case SD_DAC_WAVE_PART_PWM_ABNORMAL: return "pwm_abnormal";
 	case SD_DAC_WAVE_PART_IGBT_FAULT: return "igbt_fault";
+	case SD_DAC_WAVE_PART_BUS_GROUND: return "bus_ground";
+	case SD_DAC_WAVE_PART_PWM_ABNORMAL: return "pwm_abnormal";
 	default: return "unknown";
 	}
 }
@@ -54,11 +55,58 @@ static uint32_t sd_dac_wave_checksum_update(uint32_t checksum, const uint8_t *da
 	return value;
 }
 
+static bool sd_dac_wave_sd_payload_checksums(FIL *fil, const SD_DacWaveHeader_t *hdr,
+                                             uint32_t *canonical_checksum_out,
+                                             uint32_t *zero_seed_checksum_out,
+                                             uint8_t *io_buf,
+                                             uint32_t io_buf_len)
+{
+	uint32_t canonical_checksum = SD_DAC_WAVE_CHECKSUM_SEED;
+	uint32_t zero_seed_checksum = 0u;
+	uint32_t done = 0u;
+	FRESULT fres;
+	UINT br = 0u;
+
+	if (!fil || !hdr || !canonical_checksum_out || !zero_seed_checksum_out || !io_buf || io_buf_len == 0u) {
+		return false;
+	}
+
+	fres = f_lseek(fil, hdr->data_offset);
+	if (fres != FR_OK) {
+		printf("[WAVE] SD precheck seek failed (%d)\r\n", (int)fres);
+		return false;
+	}
+
+	while (done < hdr->data_bytes) {
+		UINT req = (UINT)(hdr->data_bytes - done);
+		if (req > (UINT)io_buf_len) {
+			req = (UINT)io_buf_len;
+		}
+
+		fres = f_read(fil, io_buf, req, &br);
+		if (fres != FR_OK || br != req) {
+			printf("[WAVE] SD precheck read failed (%d, br=%lu req=%lu)\r\n",
+			       (int)fres,
+			       (unsigned long)br,
+			       (unsigned long)req);
+			return false;
+		}
+
+		canonical_checksum = sd_dac_wave_checksum_update(canonical_checksum, io_buf, br);
+		zero_seed_checksum = sd_dac_wave_checksum_update(zero_seed_checksum, io_buf, br);
+		done += br;
+	}
+
+	*canonical_checksum_out = canonical_checksum;
+	*zero_seed_checksum_out = zero_seed_checksum;
+	return true;
+}
+
 static bool sd_dac_wave_qspi_checksum(uint32_t qspi_addr, uint32_t data_bytes,
                                       uint32_t *checksum_out, uint8_t *io_buf,
                                       uint32_t io_buf_len)
 {
-	uint32_t checksum = 2166136261u;
+	uint32_t checksum = SD_DAC_WAVE_CHECKSUM_SEED;
 	uint32_t done = 0u;
 
 	if (!checksum_out || !io_buf || io_buf_len == 0u) {
@@ -89,6 +137,7 @@ static bool sd_dac_wave_qspi_payload_valid(uint32_t partition_base,
                                            uint32_t io_buf_len)
 {
 	uint32_t checksum = 0u;
+	uint32_t zero_seed_checksum = 0u;
 
 	if (!hdr) {
 		return false;
@@ -103,7 +152,31 @@ static bool sd_dac_wave_qspi_payload_valid(uint32_t partition_base,
 	if (checksum_out != NULL) {
 		*checksum_out = checksum;
 	}
-	return (checksum == hdr->checksum);
+	if (checksum == hdr->checksum) {
+		return true;
+	}
+
+	/* Compatibility for AI-training HIL packages generated before 2026-05-07.
+	 * Those files used a zero-seed checksum in the header. Playback keeps the
+	 * canonical FNV offset checksum when writing new QSPI headers, but accepting
+	 * the old seed lets existing SD/QSPI contents be recovered without data loss.
+	 */
+	zero_seed_checksum = 0u;
+	for (uint32_t done = 0u; done < hdr->data_bytes;) {
+		uint32_t chunk = hdr->data_bytes - done;
+		if (chunk > io_buf_len) {
+			chunk = io_buf_len;
+		}
+		if (QSPI_W25Qxx_ReadBuffer_Slow(io_buf, partition_base + hdr->data_offset + done, chunk) != QSPI_W25Qxx_OK) {
+			return false;
+		}
+		zero_seed_checksum = sd_dac_wave_checksum_update(zero_seed_checksum, io_buf, chunk);
+		done += chunk;
+	}
+	if (checksum_out != NULL) {
+		*checksum_out = zero_seed_checksum;
+	}
+	return (zero_seed_checksum == hdr->checksum);
 }
 
 static bool sd_dac_wave_header_valid(const SD_DacWaveHeader_t *hdr, uint32_t max_region_bytes)
@@ -154,6 +227,7 @@ static void sd_dac_wave_info_from_header(const SD_DacWaveHeader_t *hdr,
 	info->qspi_data_offset = partition_base + hdr->data_offset;
 	info->qspi_mmap_addr = SD_DAC_WAVE_MMAP_BASE + info->qspi_data_offset;
 	info->partition_id = (uint32_t)partition;
+	info->checksum = hdr->checksum;
 }
 
 static bool sd_make_parent_dir(const char *path)
@@ -328,8 +402,11 @@ bool SD_Wave_SyncDacToQspiPartition(const char *sd_path, SD_DacWavePartition_t p
 	FRESULT sd_res;
 	UINT br = 0u;
 	SD_DacWaveHeader_t hdr = {0};
+	SD_DacWaveHeader_t write_hdr = {0};
 	SD_DacWaveHeader_t qspi_hdr = {0};
-	uint32_t checksum = 2166136261u;
+	uint32_t checksum = SD_DAC_WAVE_CHECKSUM_SEED;
+	uint32_t sd_checksum = 0u;
+	uint32_t sd_checksum_zero_seed = 0u;
 	uint32_t qspi_checksum = 0u;
 	uint32_t written = 0u;
 	uint32_t flash_total = 0u;
@@ -371,7 +448,30 @@ bool SD_Wave_SyncDacToQspiPartition(const char *sd_path, SD_DacWavePartition_t p
 		return false;
 	}
 
-	flash_total = hdr.data_offset + hdr.data_bytes;
+	if (!sd_dac_wave_sd_payload_checksums(&fil, &hdr, &sd_checksum, &sd_checksum_zero_seed, io_buf, sizeof(io_buf)) ||
+	    ((sd_checksum != hdr.checksum) && (sd_checksum_zero_seed != hdr.checksum))) {
+		(void)f_close(&fil);
+		printf("[WAVE] SD precheck checksum mismatch: part=%s header=0x%08lX canonical=0x%08lX zero=0x%08lX, skip erase\r\n",
+		       SD_Wave_GetPartitionName(partition),
+		       (unsigned long)hdr.checksum,
+		       (unsigned long)sd_checksum,
+		       (unsigned long)sd_checksum_zero_seed);
+		return false;
+	}
+	write_hdr = hdr;
+	if (sd_checksum_zero_seed == hdr.checksum && sd_checksum != hdr.checksum) {
+		write_hdr.checksum = sd_checksum;
+		printf("[WAVE] SD precheck ok: part=%s checksum=0x%08lX zero-seed header normalized to 0x%08lX\r\n",
+		       SD_Wave_GetPartitionName(partition),
+		       (unsigned long)sd_checksum_zero_seed,
+		       (unsigned long)sd_checksum);
+	} else {
+		printf("[WAVE] SD precheck ok: part=%s checksum=0x%08lX\r\n",
+	       SD_Wave_GetPartitionName(partition),
+	       (unsigned long)sd_checksum);
+	}
+
+	flash_total = write_hdr.data_offset + write_hdr.data_bytes;
 	erase_end = partition_base + ((flash_total + (SD_DAC_WAVE_ERASE_UNIT - 1u)) & ~(SD_DAC_WAVE_ERASE_UNIT - 1u));
 
 	if (QSPI_W25Qxx_BeginCommandMode() != QSPI_W25Qxx_OK) {
@@ -392,7 +492,7 @@ bool SD_Wave_SyncDacToQspiPartition(const char *sd_path, SD_DacWavePartition_t p
 
 	if (QSPI_W25Qxx_ReadBuffer_Slow((uint8_t *)&qspi_hdr, partition_base, sizeof(qspi_hdr)) == QSPI_W25Qxx_OK &&
 	    sd_dac_wave_header_valid(&qspi_hdr, SD_DAC_QSPI_PARTITION_SIZE) &&
-	    memcmp(&qspi_hdr, &hdr, sizeof(hdr)) == 0) {
+	    memcmp(&qspi_hdr, &write_hdr, sizeof(write_hdr)) == 0) {
 		if (sd_dac_wave_qspi_payload_valid(partition_base, &qspi_hdr, &qspi_checksum, io_buf, sizeof(io_buf))) {
 			if (QSPI_W25Qxx_EnterMemoryMapped() != QSPI_W25Qxx_OK) {
 				QSPI_W25Qxx_EndCommandMode();
@@ -403,7 +503,7 @@ bool SD_Wave_SyncDacToQspiPartition(const char *sd_path, SD_DacWavePartition_t p
 			QSPI_W25Qxx_EndCommandMode();
 			(void)f_close(&fil);
 
-			sd_dac_wave_info_from_header(&hdr, partition_base, partition, info);
+			sd_dac_wave_info_from_header(&write_hdr, partition_base, partition, info);
 			printf("[WAVE] sync skip/already current: part=%s(%lu) checksum=0x%08lX addr=0x%08lX\r\n",
 			       SD_Wave_GetPartitionName(partition),
 			       (unsigned long)partition,
@@ -413,7 +513,7 @@ bool SD_Wave_SyncDacToQspiPartition(const char *sd_path, SD_DacWavePartition_t p
 		}
 		printf("[WAVE] QSPI payload stale: part=%s exp=0x%08lX got=0x%08lX\r\n",
 		       SD_Wave_GetPartitionName(partition),
-		       (unsigned long)hdr.checksum,
+		       (unsigned long)write_hdr.checksum,
 		       (unsigned long)qspi_checksum);
 	}
 
@@ -426,7 +526,7 @@ bool SD_Wave_SyncDacToQspiPartition(const char *sd_path, SD_DacWavePartition_t p
 		}
 	}
 
-	fres = f_lseek(&fil, hdr.data_offset);
+	fres = f_lseek(&fil, write_hdr.data_offset);
 	if (fres != FR_OK) {
 		QSPI_W25Qxx_EndCommandMode();
 		(void)f_close(&fil);
@@ -434,8 +534,8 @@ bool SD_Wave_SyncDacToQspiPartition(const char *sd_path, SD_DacWavePartition_t p
 		return false;
 	}
 
-	while (written < hdr.data_bytes) {
-		UINT req = (UINT)(hdr.data_bytes - written);
+	while (written < write_hdr.data_bytes) {
+		UINT req = (UINT)(write_hdr.data_bytes - written);
 		if (req > (UINT)sizeof(io_buf)) {
 			req = (UINT)sizeof(io_buf);
 		}
@@ -451,7 +551,7 @@ bool SD_Wave_SyncDacToQspiPartition(const char *sd_path, SD_DacWavePartition_t p
 			return false;
 		}
 
-		if (QSPI_W25Qxx_WriteBuffer_Slow(io_buf, partition_base + hdr.data_offset + written, br) != QSPI_W25Qxx_OK) {
+		if (QSPI_W25Qxx_WriteBuffer_Slow(io_buf, partition_base + write_hdr.data_offset + written, br) != QSPI_W25Qxx_OK) {
 			QSPI_W25Qxx_EndCommandMode();
 			(void)f_close(&fil);
 			printf("[WAVE] write data failed @%lu\r\n", (unsigned long)written);
@@ -463,23 +563,23 @@ bool SD_Wave_SyncDacToQspiPartition(const char *sd_path, SD_DacWavePartition_t p
 	}
 	(void)f_close(&fil);
 
-	if (written != hdr.data_bytes || checksum != hdr.checksum) {
+	if (written != write_hdr.data_bytes || checksum != write_hdr.checksum) {
 		QSPI_W25Qxx_EndCommandMode();
 		printf("[WAVE] checksum mismatch exp=0x%08lX got=0x%08lX\r\n",
-		       (unsigned long)hdr.checksum, (unsigned long)checksum);
+		       (unsigned long)write_hdr.checksum, (unsigned long)checksum);
 		return false;
 	}
 
-	if (!sd_dac_wave_qspi_payload_valid(partition_base, &hdr, &qspi_checksum, io_buf, sizeof(io_buf))) {
+	if (!sd_dac_wave_qspi_payload_valid(partition_base, &write_hdr, &qspi_checksum, io_buf, sizeof(io_buf))) {
 		QSPI_W25Qxx_EndCommandMode();
 		printf("[WAVE] QSPI verify data failed: part=%s exp=0x%08lX got=0x%08lX\r\n",
 		       SD_Wave_GetPartitionName(partition),
-		       (unsigned long)hdr.checksum,
+		       (unsigned long)write_hdr.checksum,
 		       (unsigned long)qspi_checksum);
 		return false;
 	}
 
-	if (QSPI_W25Qxx_WriteBuffer_Slow((uint8_t *)&hdr, partition_base, sizeof(hdr)) != QSPI_W25Qxx_OK) {
+	if (QSPI_W25Qxx_WriteBuffer_Slow((uint8_t *)&write_hdr, partition_base, sizeof(write_hdr)) != QSPI_W25Qxx_OK) {
 		QSPI_W25Qxx_EndCommandMode();
 		printf("[WAVE] write header failed\r\n");
 		return false;
@@ -492,7 +592,7 @@ bool SD_Wave_SyncDacToQspiPartition(const char *sd_path, SD_DacWavePartition_t p
 			printf("[WAVE] readback header failed\r\n");
 			return false;
 		}
-		if (memcmp(&check_hdr, &hdr, sizeof(hdr)) != 0) {
+		if (memcmp(&check_hdr, &write_hdr, sizeof(write_hdr)) != 0) {
 			QSPI_W25Qxx_EndCommandMode();
 			printf("[WAVE] readback header mismatch\r\n");
 			return false;
@@ -506,12 +606,13 @@ bool SD_Wave_SyncDacToQspiPartition(const char *sd_path, SD_DacWavePartition_t p
 	}
 	QSPI_W25Qxx_EndCommandMode();
 
-	sd_dac_wave_info_from_header(&hdr, partition_base, partition, info);
-	printf("[WAVE] sync ok: part=%s(%lu) sps=%lu count=%lu addr=0x%08lX\r\n",
+	sd_dac_wave_info_from_header(&write_hdr, partition_base, partition, info);
+	printf("[WAVE] sync ok: part=%s(%lu) sps=%lu count=%lu checksum=0x%08lX addr=0x%08lX\r\n",
 	       SD_Wave_GetPartitionName(partition),
 	       (unsigned long)partition,
 	       (unsigned long)info->sample_rate_hz,
 	       (unsigned long)info->sample_count,
+	       (unsigned long)info->checksum,
 	       (unsigned long)info->qspi_mmap_addr);
 	return true;
 }
