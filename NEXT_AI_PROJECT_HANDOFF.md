@@ -558,3 +558,42 @@ Expected logs when the marker is absent:
 1. AI 端是否正式把 v68 替代 v67 设为 production candidate。
 2. 监测端是否已把 v68 X-CUBE-AI 生成文件完整烧录到 STM32；AI handoff 记录为 Keil build OK，但当时因无调试器未完成下载。
 3. HIL 联调时 Web/报告展示是否只显示模型主类输出，`summary.json` 中的注入子类型只能作为演示追溯信息，不能伪装成模型预测子类型。
+
+## 16. 2026-06-16 v69 aux4 稳步推进门禁
+
+AI 训练端已新增 v69 aux4 smoke 线：
+
+```text
+C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_AI_Training\docs\v69_wind_sensor_aux4_public_fused_single_handoff.md
+```
+
+当前结论：
+
+- v68 `dataset_v68_wind_sensor_public_fused_single_v6` 是当前稳定部署线。
+- v69 `dataset_v69_wind_sensor_aux4_public_fused_single` 只是下一集成线，已有 smoke 结果，但尚未完成全量训练和正式 STM32 deploy package。
+- 播放端不要因为 v69 smoke 存在就改变现有 A/B/C/D 播放链路。
+
+v69 对播放端的兼容约束：
+
+- 现有 7 个 D8CW `.bin` 文件继续严格保持 4 通道，header 中 `channels=4` 不变。
+- v69 如果需要辅助量，只新增可选 sidecar：
+
+```text
+0:/wave/aux4_schedule.json
+```
+
+- `aux4_schedule.json` 用于低速输出 DAC8568 E/F/G/H：
+  - E -> `T_igbt_C`
+  - F -> `T_dc_cap_C`
+  - G -> `RH_cabinet_pct`
+  - H -> `wind_load_pct`
+- 没有 `aux4_schedule.json` 时，播放端必须仍按 v68 方式启动、同步和播放。
+- 播放端 SD 卡仍不接收 AI golden vectors、TFLite、X-CUBE-AI 文件或自测 payload。
+
+推进顺序：
+
+1. 先用当前 v68 监测端固件和当前播放端 4 通道 wave 包完成 HIL 基线验收。
+2. v68 normal 连续 5 分钟不得反复触发 E01/E04；七类回放要记录监测端 top1、`ppermil[7]`、`confidence` 和耗时。
+3. v68 验收通过后，AI 端再生成 v69 全量训练产物和正式 STM32 deploy package。
+4. 播放端只有在监测端需要真实 aux4 硬件链路时，才实现 `aux4_schedule.json` 到 DAC8568 E/F/G/H 的低速输出。
+5. 如果 v69 在 normal 或七类 HIL 回放上退化，保持 v68 部署，不扩展 Web 协议。

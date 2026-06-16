@@ -431,15 +431,13 @@ AI 输入 +3000mV
 
 ## 8. 后续推荐验证顺序
 
-1. AI 端确认本轮监测端到底采用 v67 还是 v68，并冻结模型合同、preprocess/参数、golden vectors 和 X-CUBE-AI 生成报告。
-2. 监测端单独编译下载，确认采样、FFT、AI runtime 和 ESP32 上传正常；v68 handoff 记录过 Keil build OK，但当时因无调试器未完成下载。
-3. 监测端按选定模型合同实现实时特征提取和 `ai_network_run()`。
-4. 串口打印每个窗口的 `probabilities[7]`、`fault_code`、`confidence` 和推理耗时。
-5. Web 增加 AI 诊断结果展示，并区分“模型预测主类”和“播放端注入元数据”。
-6. 播放端准备 SD，必要时放置 `0:/wave/SYNC_NOW.TXT` 触发一次性同步 7 个波形到 W25Q256。
-7. 播放端 DAC8568 A/B/C/D 接监测端 ADC，并确认 GND 共地和量程。
-8. 依次播放 normal、ac_coupling、insulation、cap_aging、igbt_fault、bus_ground、pwm_abnormal。
-9. 记录识别率、误报率、混淆矩阵、告警延迟和复位后 QSPI baseline 恢复情况。
+1. 当前稳定部署线按 AI 端 `CURRENT_STATUS.md` 和 v68 handoff 执行：`dataset_v68_wind_sensor_public_fused_single_v6`，三输入单 7 类模型，无 raw-lite、无 guard/router。
+2. 监测端先完成 v68 HIL 基线验收：normal 连续 5 分钟、七类回放、记录 `probabilities[7]`、`fault_code`、`confidence` 和推理耗时。
+3. 播放端准备 SD，必要时放置 `0:/wave/SYNC_NOW.TXT` 触发一次性同步 7 个波形到 W25Q256。
+4. 播放端 DAC8568 A/B/C/D 接监测端 ADC，并确认 GND 共地和量程。
+5. 依次播放 normal、ac_coupling、insulation、cap_aging、igbt_fault、bus_ground、pwm_abnormal。
+6. 记录识别率、误报率、混淆矩阵、告警延迟和复位后 QSPI baseline 恢复情况。
+7. v68 HIL 未验收通过前，不把 v69 smoke 模型或 aux4 固件改动替换到监测端主链路。
 
 ## 9. 新对话最短背景
 
@@ -452,3 +450,25 @@ EdgeWind_AI_Training 是 PC 端 AI 训练和 STM32Cube.AI 部署准备工程。2
 
 STM32H750XBH6_DAC8568_FreeRTOS_LVGL9.4.0 是故障播放端，不是监测端。它从 SD:/wave/*.bin 同步 normal + 6 fault 到 W25Q256 七个 4MB 分区，通过 QSPI memory-mapped + TIM12 + SPI1 DMA 驱动 DAC8568 A/B/C/D 四通道输出，作为监测端 ADC 的 HIL 故障注入源。当前 W25Q 分区顺序是 normal/ac/insulation/cap/igbt/bus_ground/pwm，UI fault id 顺序是 ac/insulation/cap/igbt/bus_ground/pwm，默认触发时长 120s。
 ```
+
+## 10. 2026-06-16 v69 aux4 追加规则
+
+AI 端新增 `dataset_v69_wind_sensor_aux4_public_fused_single` 作为下一集成线，但当前播放端仍以 v68 HIL 基线为主，不改变现有 7 个 D8CW 波形文件。
+
+v69 对播放端的唯一新增候选输入是可选 sidecar：
+
+```text
+0:/wave/aux4_schedule.json
+```
+
+规则：
+
+- `normal.bin` 到 `pwm_abnormal.bin` 仍严格保持 4 通道 D8CW，header 中 `channels=4` 不变。
+- `aux4_schedule.json` 只用于低速 DAC8568 E/F/G/H 输出：
+  - E -> `T_igbt_C`
+  - F -> `T_dc_cap_C`
+  - G -> `RH_cabinet_pct`
+  - H -> `wind_load_pct`
+- 没有 `aux4_schedule.json` 时，播放端必须仍能按 v68 方式播放 A/B/C/D。
+- v69 smoke 模型不能作为播放端或监测端正式验收依据；必须等待 AI 端完成全量训练、正式 STM32 deploy package 和监测端 HIL 验证。
+- 播放端不解析 TFLite、golden vectors 或 AI 自测文件；SD 卡仍只接受 `wave/*.bin`、`summary.json`、可选 `aux4_schedule.json` 和 `SYNC_NOW.TXT`。
