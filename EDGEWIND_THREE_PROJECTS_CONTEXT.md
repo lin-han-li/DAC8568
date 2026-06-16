@@ -1,6 +1,6 @@
 # EdgeWind 三项目协作关系说明
 
-更新日期：2026-05-08
+更新日期：2026-06-16
 
 当前项目视角：
 
@@ -11,12 +11,33 @@
 
 本文档说明当前大创项目中三个独立项目之间的关系。三个项目不计划合并源码，也不互相覆盖目录。它们保持独立，通过文档、模型产物、波形产物和硬件接口协作。
 
-## 1. 三个项目路径
+## 1. 三个项目路径和本端目录登记
 
 ```text
 C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_STM32_ESP32
 C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_AI_Training
 C:\Users\pengjianzhong\Desktop\MY_Project\STM32H750XBH6_DAC8568_FreeRTOS_LVGL9.4.0
+```
+
+本文件属于播放端自己的仓库。播放端必须记录另外两端目录，后续互相看文档时按这些路径进入；本端不复制、不合并、不覆盖另外两端源码。
+
+| 端 | 根目录 | 本端记录的关键入口 |
+|---|---|---|
+| 监测诊断端 | `C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_STM32_ESP32` | `STM32H7+FreeRTOS+LVGL+ESP32`、`Edge_Wind_System`、`esp32_spi_coprocessor` |
+| AI 训练端 | `C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_AI_Training` | `CURRENT_STATUS.md`、`docs\v68_wind_sensor_public_fused_single_stm32_handoff.md`、`stm32_deploy_packages\dataset_v68_wind_sensor_public_fused_single_v6_single7_20260616_031448` |
+| 本端/播放端 | `C:\Users\pengjianzhong\Desktop\MY_Project\STM32H750XBH6_DAC8568_FreeRTOS_LVGL9.4.0` | `NEXT_AI_PROJECT_HANDOFF.md`、`EDGEWIND_THREE_PROJECTS_CONTEXT.md`、`sd_card_payload\copy_to_sd`、`MDK-ARM\STM32H750XBH6.uvprojx` |
+
+本端已记录的另外两端优先阅读文档：
+
+```text
+C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_STM32_ESP32\STM32H7+FreeRTOS+LVGL+ESP32\PROJECT_OVERVIEW.md
+C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_STM32_ESP32\STM32H7+FreeRTOS+LVGL+ESP32\README.md
+C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_STM32_ESP32\STM32H7+FreeRTOS+LVGL+ESP32\ESP8266_Logic_and_ESP32_WROOM32E_UE_Migration_Assessment.md
+C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_STM32_ESP32\STM32H7+FreeRTOS+LVGL+ESP32\X-CUBE-AI\App\network_generate_report.txt
+C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_STM32_ESP32\esp32_spi_coprocessor\README.md
+C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_STM32_ESP32\Edge_Wind_System\README.md
+C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_AI_Training\CURRENT_STATUS.md
+C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_AI_Training\docs\v68_wind_sensor_public_fused_single_stm32_handoff.md
 ```
 
 职责划分：
@@ -168,6 +189,13 @@ FFT：4ch x 2048
 
 本项目给监测端提供模拟故障输入。监测端负责判断这些模拟输入属于哪类故障。
 
+2026-06-16 已读取的监测端文档状态：
+
+- `STM32H7+FreeRTOS+LVGL+ESP32\PROJECT_OVERVIEW.md` 和 `README.md` 仍保留较多 ESP8266/AT 透传旧描述，可作为历史固件结构参考。
+- `esp32_spi_coprocessor\README.md` 明确 ESP32-WROOM-32E/UE 的目标形态是原生通信协处理器，SPI 是 STM32<->ESP32 主业务链路，ESP32 负责 Wi-Fi、HTTP、重试和服务器命令解析。
+- `Edge_Wind_System\README.md` 明确上位机是 Flask + Web UI，开发入口是 `python app.py`，本地访问 `http://localhost:5000`。
+- `X-CUBE-AI\App\network_generate_report.txt` 已是 v68 生成报告，说明监测端正在向最新 3 输入单 7 类 AI 网络对齐。
+
 ## 5. `EdgeWind_AI_Training` 是什么
 
 路径：
@@ -178,42 +206,65 @@ C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_AI_Training
 
 这是 PC 端 AI 训练与部署准备工程，不是正式监测端主工程，也不是 DAC 播放端。
 
-它完成了：
+它当前维护两条需要区分的状态线：
 
-- 生成风电场直流系统 normal + 6 fault 训练数据。
-- 构造更真实的工况随机化数据集。
-- 按 `scenario_id` 做 train/val/test/hil_holdout 工况切分。
-- 提取工程特征、FFT 频谱特征、小波特征。
-- 训练并比较 v1 到 v5 多个模型。
-- 最终选择 `dataset_v5_uniform_512_db3`。
-- 导出 `model_float32.tflite`。
-- 使用 STM32CubeMX / X-CUBE-AI 生成并验证 H750 板端推理代码。
+1. `CURRENT_STATUS.md`（2026-06-15）把 `dataset_v67_public_fused_1p4m_single` 记录为 production candidate。v67 是单 7 类融合模型，输入包含 `X_dwt[104]`、`X_feat[116]`、`X_spec[512,4]`、`X_rawlite[78]`，输出 `probabilities[7]`、`fault_code`、`confidence`。
+2. `docs\v68_wind_sensor_public_fused_single_stm32_handoff.md`（2026-06-16）是最新监测端 STM32 handoff。v68 合同改为三输入单 7 类网络：`X_dwt[104]`、`X_feat[116]`、`X_spec[512,4]`，输出 `probabilities[7]`；没有 raw-lite、没有 E00 guard/router、没有第二模型、没有硬规则 masking。
 
-历史板端验证基线模型：
+三端联调当前应按 v68 文档记录“最新 STM32 交接产物”，但在正式烧录监测端前必须由 AI 端确认 v68 是否已经取代 v67 成为 production candidate。
+
+v68 当前部署产物：
 
 ```text
-models/dataset_v5_uniform_512_db3/model_float32.tflite
-models/dataset_v5_uniform_512_db3/preprocess.npz
+model family:
+dataset_v68_wind_sensor_public_fused_single_v6
+
+training run:
+models/dataset_v68_wind_sensor_public_fused_single_v6_single7_cpu_20260616_031448
+
+tflite run:
+models/dataset_v68_wind_sensor_public_fused_single_v6_single7_tflite_20260616_031448
+
+stm32 deploy package:
+stm32_deploy_packages/dataset_v68_wind_sensor_public_fused_single_v6_single7_20260616_031448
 ```
 
-当前 PC 端 v6.2 部署候选模型：
+v68 X-CUBE-AI 合同：
 
 ```text
-models/dataset_v62_accuracy_multiscale_torch_cuda_20260508_224123_keras_tflite/model_float32.tflite
-models/dataset_v62_accuracy_multiscale_torch_cuda_20260508_224123_keras_tflite/preprocess.npz
+network name: network
+input 1: serving_default_X_dwt0  f32(1x104)
+input 2: serving_default_X_feat0 f32(1x116)
+input 3: serving_default_X_spec0 f32(1x512x4)
+output : nl_23                  f32(1x7)
+TFLite size: 250,024 bytes
+MACC: 6,216,960
+weights: 238,972 B
+activations: 295,904 B
 ```
 
-说明：v5 是已经完成 X-CUBE-AI Analyze 和 H750 golden selftest 的历史板端基线；v6.2 是加入故障子类型和更大数据集后的新候选，正式替换监测端固件前必须重新完成 X-CUBE-AI Analyze/Generate、golden vector 对齐、实时推理耗时和 HIL 混淆矩阵复验。
-
-模型输入：
+v67 production candidate 指标摘要：
 
 ```text
-X_feat: 116 维工程统计特征
-X_spec: 4 x 512 频谱特征
-X_dwt : 104 维 db3 小波特征
+dataset: 1,400,000 total, 200,000 per class
+test acc: 0.999429
+hil_holdout acc: 0.999400
+TFLite size: 303,624 bytes
+golden vectors: 21/21
 ```
 
-模型输出 7 类：
+v68 STM32 handoff 指标摘要：
+
+```text
+dataset: 350,000 total, 50,000 per class
+val acc: 0.9978
+test acc: 0.9978
+hil_holdout acc: 0.9982
+golden vectors: 21/21
+Keras/TFLite max diff: 3.7252903e-09
+```
+
+模型主输出 7 类顺序保持不变：
 
 ```text
 E00 normal
@@ -225,16 +276,7 @@ E05 bus_ground
 E06 pwm_abnormal
 ```
 
-历史 v5 板端基线指标：
-
-```text
-test accuracy        约 99.10%
-HIL holdout accuracy 约 99.53%
-TFLite size          78,284 bytes
-X-CUBE-AI Flash      约 90 KB
-X-CUBE-AI RAM        约 119 KB
-H750 实测模型推理    约 35.7 ms/window
-```
+历史 v5/v6.2/v66/v67 资料仍可作为追溯证据，但不应继续在三端交接中被写成当前唯一候选。
 
 ## 6. 三项目之间的接口约定
 
@@ -286,11 +328,9 @@ probabilities[7]
 diagnosis_latency_ms
 ```
 
-### 6.4 v6.2 故障子类型同步说明和三端计划
+### 6.4 2026-06-16 三端接口对齐
 
-更新时间：2026-05-08
-
-v6.2 只扩展每个主故障类内部的可解释故障形态，不改变监测端和 Web 端的主分类接口。STM32 端模型仍然输出 7 类：
+当前三端主分类接口仍然保持 7 类，不因 v67/v68 模型切换而改变：
 
 ```text
 E00 normal
@@ -302,7 +342,7 @@ E05 bus_ground
 E06 pwm_abnormal
 ```
 
-新增的 `fault_subtype` 先作为数据集元数据、HIL 回放追溯、样本图说明和三端联调解释字段使用，不要求 STM32 端模型直接输出 30 多个子类型。这样可以保持主分类稳定，同时让播放端注入波形、监测端诊断结果和 Web 展示解释有一致来源。
+播放端 `summary.json` 中的 `source_fault_subtypes` 只能作为 HIL 注入追溯字段使用；监测端模型当前只输出主类 `fault_code`、`confidence`、`probabilities[7]`。Web 若在 HIL 演示模式展示注入子类型，必须标注为“播放端注入信息”，不能伪装成模型预测的子类型。
 
 四通道语义固定如下：
 
@@ -313,34 +353,42 @@ E06 pwm_abnormal
 | C | 负载/变流器等效电流 |
 | D | 泄漏/对地电流 |
 
-v6.2 子类型规划如下：
-
-| 主类 | 子类型 |
-|---|---|
-| E00 normal | `normal_light_load`、`normal_high_load`、`normal_grid_ripple`、`normal_sensor_noise`、`normal_load_step_recovered` |
-| E01 ac_coupling | `ac_50hz_common_mode`、`ac_150hz_harmonic`、`intermittent_ac_intrusion`、`branch_coupled_ac` |
-| E02 insulation | `positive_insulation_drop`、`negative_insulation_drop`、`humidity_leakage`、`partial_discharge_pulse` |
-| E03 cap_aging | `esr_increase`、`capacitance_loss`、`thermal_aging`、`load_ripple_sensitive` |
-| E04 igbt_fault | `igbt_open_equiv`、`drive_loss`、`short_overcurrent_equiv`、`protection_clamp_recovery` |
-| E05 bus_ground | `positive_high_res_ground`、`negative_high_res_ground`、`positive_low_res_ground`、`negative_low_res_ground`、`midpoint_or_multi_ground` |
-| E06 pwm_abnormal | `carrier_offset`、`duty_jitter`、`missing_pulse`、`deadtime_abnormal`、`sideband_enhanced` |
-
-当前 v6.2 AI 部署候选为：
+播放端 SD payload 规则：
 
 ```text
-models/dataset_v62_accuracy_multiscale_torch_cuda_20260508_224123_keras_tflite/model_float32.tflite
+0:/wave/normal.bin
+0:/wave/ac_coupling.bin
+0:/wave/insulation.bin
+0:/wave/cap_aging.bin
+0:/wave/igbt_fault.bin
+0:/wave/bus_ground.bin
+0:/wave/pwm_abnormal.bin
 ```
 
-关键指标：
+固件只把上述 7 个 `.bin` 作为 D8CW 波形解析。`summary.json` 是元数据，`SYNC_NOW.TXT` 是一次性 SD->W25Q256 同步标记；两者不能被监测端或 AI 端当作模型输入。
 
-| 项目 | 数值 |
-|---|---:|
-| 输入 | `116` 工程特征 + `4x512` FFT + `104` db3 DWT |
-| 参数量 | 约 `5.96 万` |
-| Float32 TFLite | `250,024 bytes` |
-| val accuracy | `99.9702%` |
-| test accuracy | `99.9643%` |
-| hil_holdout accuracy | `99.9690%` |
+播放端 W25Q256 分区顺序：
+
+```text
+0 normal
+1 ac_coupling
+2 insulation
+3 cap_aging
+4 igbt_fault
+5 bus_ground
+6 pwm_abnormal
+```
+
+播放端 UI fault id 顺序：
+
+```text
+0 ac_coupling
+1 insulation
+2 cap_aging
+3 igbt_fault
+4 bus_ground
+5 pwm_abnormal
+```
 
 量程和单位必须保持三端一致：
 
@@ -362,11 +410,11 @@ AI 输入 +3000mV
 
 三端同步计划：
 
-1. AI 训练端维护 `dataset_v62`、`data_v62_fusion`、`fault_subtype` 元数据、样本图、HIL `summary.json` 和 TFLite 部署候选。
-2. 播放端从 v6.2 HIL 包选择每个主类 2-3 个代表性子类型，`.bin` 仍输出低压模拟量，并在 `summary.json` 保留 `source_fault_subtypes`、`source_observable_channels` 和 `source_window_metadata`。
-3. 监测端只预测主类 `fault_code`、`confidence`、`probabilities[7]`，暂不预测子类型；HIL 联调时可根据播放端 `summary.json` 对照注入子类型。
-4. Web 端先显示主类、置信度、工程量和规则解释；如果处于 HIL 演示模式，可以显示播放端提供的“注入子类型”，但不能伪装成模型预测子类型。
-5. 替换 v6.2 模型前，监测端必须重新执行 X-CUBE-AI Analyze/Generate、golden vector 对齐、实时窗口推理耗时测试和 HIL 混淆矩阵复验。
+1. AI 端先确认 v67/v68 最终部署版本，并同步 `model_float32.tflite`、preprocess/参数、golden vectors 和 X-CUBE-AI 生成报告。
+2. 监测端按选定模型合同接入输入张量；若采用 v68，只接 `X_dwt[104]`、`X_feat[116]`、`X_spec[512,4]`，不接 `X_rawlite`。
+3. 播放端只负责稳定输出 canonical 7 类低压模拟波形，并通过 `summary.json` 保留注入追溯信息。
+4. Web 端显示主类、置信度、工程量和规则解释；HIL 注入子类型只能作为回放端元数据展示。
+5. 监测端每次替换模型前，必须重新执行 X-CUBE-AI Analyze/Generate、golden vector 对齐、实时窗口推理耗时测试和 HIL 混淆矩阵复验。
 
 ## 7. 不要做的事
 
@@ -383,15 +431,15 @@ AI 输入 +3000mV
 
 ## 8. 后续推荐验证顺序
 
-1. 监测端单独编译下载，确认采样、FFT、ESP32 上传正常。
-2. 监测端接入 AI runtime，保留 golden selftest。
-3. 实现正式实时特征提取和 `ai_network_run()`。
-4. 串口打印每个窗口的 AI 输出。
-5. Web 增加 AI 诊断结果展示。
-6. 播放端插 SD，同步 7 个波形到 W25Q256。
-7. 播放端 DAC8568 接监测端 ADC。
-8. 依次播放 normal + 6 fault。
-9. 记录识别率、误报率、混淆矩阵和告警延迟。
+1. AI 端确认本轮监测端到底采用 v67 还是 v68，并冻结模型合同、preprocess/参数、golden vectors 和 X-CUBE-AI 生成报告。
+2. 监测端单独编译下载，确认采样、FFT、AI runtime 和 ESP32 上传正常；v68 handoff 记录过 Keil build OK，但当时因无调试器未完成下载。
+3. 监测端按选定模型合同实现实时特征提取和 `ai_network_run()`。
+4. 串口打印每个窗口的 `probabilities[7]`、`fault_code`、`confidence` 和推理耗时。
+5. Web 增加 AI 诊断结果展示，并区分“模型预测主类”和“播放端注入元数据”。
+6. 播放端准备 SD，必要时放置 `0:/wave/SYNC_NOW.TXT` 触发一次性同步 7 个波形到 W25Q256。
+7. 播放端 DAC8568 A/B/C/D 接监测端 ADC，并确认 GND 共地和量程。
+8. 依次播放 normal、ac_coupling、insulation、cap_aging、igbt_fault、bus_ground、pwm_abnormal。
+9. 记录识别率、误报率、混淆矩阵、告警延迟和复位后 QSPI baseline 恢复情况。
 
 ## 9. 新对话最短背景
 
@@ -400,7 +448,7 @@ AI 输入 +3000mV
 
 EdgeWind_STM32_ESP32 是监测诊断端主项目，负责 STM32H750XBH6 采样、FFT、AI诊断、ESP32上传、服务器和Web展示。
 
-EdgeWind_AI_Training 是 PC 端 AI 训练和 STM32Cube.AI 部署准备工程。当前 v6.2 部署候选是 dataset_v62_accuracy_multiscale_torch_cuda_20260508_224123_keras_tflite，输入为 116维工程特征 + 4x512频谱 + 104维db3小波特征，主输出仍为 E00 normal + E01 ac_coupling + E02 insulation + E03 cap_aging + E04 igbt_fault + E05 bus_ground + E06 pwm_abnormal。v6.2 新增 fault_subtype 元数据用于数据集、HIL 回放追溯和 Web/答辩解释，暂不作为 STM32 模型输出。AI raw 输入单位是 train_mV，A/B 为 ±5000mV 低压模拟等效值，对应云端/Web 母线 ±500V 展示；AD7606 analog_V 进 AI 前乘1000。历史板端验证基线是 dataset_v5_uniform_512_db3，v6.2 正式替换前还要重新跑 X-CUBE-AI Analyze/Generate、golden selftest、实时耗时和 HIL 复验。
+EdgeWind_AI_Training 是 PC 端 AI 训练和 STM32Cube.AI 部署准备工程。2026-06-15 的 CURRENT_STATUS.md 仍把 v67 dataset_v67_public_fused_1p4m_single 记为 production candidate，输入含 X_dwt[104]、X_feat[116]、X_spec[512,4]、X_rawlite[78]。2026-06-16 的 v68 STM32 handoff 是最新监测端交接产物，输入改为 X_dwt[104]、X_feat[116]、X_spec[512,4]，输出 probabilities[7]，无 raw-lite、无 E00 guard/router。正式烧录监测端前必须由 AI 端确认最终采用 v67 还是 v68。AI raw 输入单位是 train_mV，A/B 为 ±5000mV 低压模拟等效值，对应云端/Web 母线 ±500V 展示；AD7606 analog_V 进 AI 前乘1000。
 
-STM32H750XBH6_DAC8568_FreeRTOS_LVGL9.4.0 是故障播放端，不是监测端。它从 SD:/wave/*.bin 同步 normal + 6 fault 到 W25Q256 七个 4MB 分区，通过 QSPI memory-mapped + TIM12 + SPI1 DMA 驱动 DAC8568 A/B/C/D 四通道输出，作为监测端 ADC 的 HIL 故障注入源。
+STM32H750XBH6_DAC8568_FreeRTOS_LVGL9.4.0 是故障播放端，不是监测端。它从 SD:/wave/*.bin 同步 normal + 6 fault 到 W25Q256 七个 4MB 分区，通过 QSPI memory-mapped + TIM12 + SPI1 DMA 驱动 DAC8568 A/B/C/D 四通道输出，作为监测端 ADC 的 HIL 故障注入源。当前 W25Q 分区顺序是 normal/ac/insulation/cap/igbt/bus_ground/pwm，UI fault id 顺序是 ac/insulation/cap/igbt/bus_ground/pwm，默认触发时长 120s。
 ```

@@ -158,8 +158,6 @@ __pycache__/
 
 # 强制保留资源文件
 !*.bin
-!tools/sd_payload/**/*.bin
-!tools/sd_payload/**/*.ttf
 
 # 强制保留文档
 !*.md

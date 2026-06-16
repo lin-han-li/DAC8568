@@ -1,13 +1,36 @@
 # NEXT AI 项目技术交接报告
 
-更新时间：2026-05-05  
+更新时间：2026-06-16
 播放端项目：`C:\Users\pengjianzhong\Desktop\MY_Project\STM32H750XBH6_DAC8568_FreeRTOS_LVGL9.4.0`  
 监测诊断端项目：`C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_STM32_ESP32`  
+AI 训练端项目：`C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_AI_Training`
 大创项目文档：`C:\Users\pengjianzhong\Desktop\MY_Project\STM32H750XBH6_DAC8568_FreeRTOS_LVGL9.4.0\大学生创新创业项目基于边缘计算的风电场直流系统故障监测.docx`
 
-本文档面向下一个接手双项目联调的 AI 或工程人员。当前项目是风电场直流系统故障播放演示端，另一个 `EdgeWind_STM32_ESP32` 项目是监测诊断端。两者共同服务于大创项目《基于边缘计算的风电场直流系统故障监测》。
+本文档面向下一个接手三端联调的 AI 或工程人员。当前项目是风电场直流系统故障播放演示端；`EdgeWind_STM32_ESP32` 是监测诊断端；`EdgeWind_AI_Training` 是 PC 端 AI 训练和 STM32 部署准备工程。三者共同服务于大创项目《基于边缘计算的风电场直流系统故障监测》。
 
-## 1. 项目定位与双项目关系
+## 0. 本端记录的另外两端目录
+
+本文件是播放端自己的交接文档。这里记录另外两端的目录和关键文档，便于后续互相阅读文档；不要在本仓库里复制、合并或覆盖另外两端源码。
+
+| 端 | 根目录 | 本端需要知道的关键目录/文档 |
+| --- | --- | --- |
+| 监测诊断端 | `C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_STM32_ESP32` | STM32 固件：`STM32H7+FreeRTOS+LVGL+ESP32`；Web 后端/前端：`Edge_Wind_System`；ESP32 原生协处理器：`esp32_spi_coprocessor` |
+| AI 训练端 | `C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_AI_Training` | 当前状态：`CURRENT_STATUS.md`；最新 STM32 handoff：`docs\v68_wind_sensor_public_fused_single_stm32_handoff.md`；STM32 部署包：`stm32_deploy_packages\dataset_v68_wind_sensor_public_fused_single_v6_single7_20260616_031448` |
+
+本轮已读取或需要优先读取的另外两端文档：
+
+```text
+C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_STM32_ESP32\STM32H7+FreeRTOS+LVGL+ESP32\PROJECT_OVERVIEW.md
+C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_STM32_ESP32\STM32H7+FreeRTOS+LVGL+ESP32\README.md
+C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_STM32_ESP32\STM32H7+FreeRTOS+LVGL+ESP32\ESP8266_Logic_and_ESP32_WROOM32E_UE_Migration_Assessment.md
+C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_STM32_ESP32\STM32H7+FreeRTOS+LVGL+ESP32\X-CUBE-AI\App\network_generate_report.txt
+C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_STM32_ESP32\esp32_spi_coprocessor\README.md
+C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_STM32_ESP32\Edge_Wind_System\README.md
+C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_AI_Training\CURRENT_STATUS.md
+C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_AI_Training\docs\v68_wind_sensor_public_fused_single_stm32_handoff.md
+```
+
+## 1. 项目定位与三端关系
 
 大创项目目标是构建一套面向风电场直流系统的边缘计算故障监测与诊断平台，覆盖交流窜入、直流母线接地、绝缘劣化、电容老化、PWM 控制异常、IGBT 故障等场景。
 
@@ -17,6 +40,7 @@
 | --- | --- | --- |
 | 播放端 | `STM32H750XBH6_DAC8568_FreeRTOS_LVGL9.4.0` | 从 SD 导入波形到 W25Q256，通过 DAC8568 输出四通道模拟信号 |
 | 监测诊断端 | `EdgeWind_STM32_ESP32` | STM32 采样/FFT/诊断，ESP32 上传，Flask 服务端和 Web 展示 |
+| AI 训练端 | `EdgeWind_AI_Training` | 生成训练数据、训练/评估模型、导出 TFLite、准备 X-CUBE-AI/STM32 部署产物 |
 
 联调时，播放端 DAC8568 的 A/B/C/D 输出应接入监测端 ADC 输入。播放端只负责“产生故障”，监测端负责“看见故障并诊断故障”。
 
@@ -100,11 +124,11 @@ SD 卡目标路径固定为：
 ```text
 0:/wave/normal.bin
 0:/wave/ac_coupling.bin
-0:/wave/bus_ground.bin
 0:/wave/insulation.bin
 0:/wave/cap_aging.bin
-0:/wave/pwm_abnormal.bin
 0:/wave/igbt_fault.bin
+0:/wave/bus_ground.bin
+0:/wave/pwm_abnormal.bin
 ```
 
 播放端量程契约：
@@ -148,11 +172,11 @@ SD 卡目标路径固定为：
 | --- | --- | --- | --- | --- |
 | 0 | `normal.bin` | 正常基准 | 正常母线与负载状态 | 弱纹波，低风险或正常 |
 | 1 | `ac_coupling.bin` | 交流窜入 | 交流分量耦合进直流系统 | 工频/谐波增强，泄漏轻微抬升 |
-| 2 | `bus_ground.bin` | 母线接地 | 母线接地或支路接地 | 电压塌陷、电流冲击、泄漏尖峰 |
-| 3 | `insulation.bin` | 绝缘劣化 | 绝缘下降、材料老化或受潮 | 泄漏趋势升高，局放型脉冲 |
-| 4 | `cap_aging.bin` | 电容老化 | ESR 增大、容量下降 | DC-link ripple 增强，充放电脉冲 |
-| 5 | `pwm_abnormal.bin` | PWM 异常 | 占空比抖动、丢脉冲、控制异常 | 载波及边带异常，电流调制 |
-| 6 | `igbt_fault.bin` | IGBT 故障 | 短路、退饱和、保护钳位 | 瞬态尖峰、电流突增、保护恢复 |
+| 2 | `insulation.bin` | 绝缘劣化 | 绝缘下降、材料老化或受潮 | 泄漏趋势升高，局放型脉冲 |
+| 3 | `cap_aging.bin` | 电容老化 | ESR 增大、容量下降 | DC-link ripple 增强，充放电脉冲 |
+| 4 | `igbt_fault.bin` | IGBT 故障 | 短路、退饱和、保护钳位 | 瞬态尖峰、电流突增、保护恢复 |
+| 5 | `bus_ground.bin` | 母线接地 | 母线接地或支路接地 | 电压塌陷、电流冲击、泄漏尖峰 |
+| 6 | `pwm_abnormal.bin` | PWM 异常 | 占空比抖动、丢脉冲、控制异常 | 载波及边带异常，电流调制 |
 
 本次验证中，7 个本地 SD 波形文件均为 4MB，采样率 `102400 Hz`，样本数 `516088`，4 通道，checksum 全部通过。`normal.bin` 的 A/B 均值约为 `+3.0000V/-3.0000V`，按工程量解释约为 `+300V/-300V`。
 
@@ -163,11 +187,11 @@ SD 卡目标路径固定为：
 ```text
 0x00400000 - 0x007FFFFF  normal
 0x00800000 - 0x00BFFFFF  ac_coupling
-0x00C00000 - 0x00FFFFFF  bus_ground
-0x01000000 - 0x013FFFFF  insulation
-0x01400000 - 0x017FFFFF  cap_aging
-0x01800000 - 0x01BFFFFF  pwm_abnormal
-0x01C00000 - 0x01FFFFFF  igbt_fault
+0x00C00000 - 0x00FFFFFF  insulation
+0x01000000 - 0x013FFFFF  cap_aging
+0x01400000 - 0x017FFFFF  igbt_fault
+0x01800000 - 0x01BFFFFF  bus_ground
+0x01C00000 - 0x01FFFFFF  pwm_abnormal
 ```
 
 关键开关在 `Core\Inc\main.h`：
@@ -179,7 +203,7 @@ SD 卡目标路径固定为：
 
 当前策略是“演示稳定优先”：
 
-- `DAC_WAVE_BOOT_FULL_SYNC=1`：每次启动仍会检查 SD 上的 7 个文件，便于带新 SD 文件上电后自动更新 W25Q256。
+- `DAC_WAVE_BOOT_FULL_SYNC=1`：启动时允许检查 SD 一次性同步标记 `0:/wave/SYNC_NOW.TXT`；只有标记存在才从 SD 同步 7 个 `.bin` 到 W25Q256。
 - 同步已改为幂等同步：如果 W25Q256 header 和 SD header 一致，并且 W25Q256 数据 checksum 匹配，则打印 `sync skip/already current`，不会擦写该分区。
 - 只有 W25Q256 缺失、checksum 不一致或 SD 文件更新时，才擦除和重写对应分区。
 - 写入流程已改为“先写数据、校验 QSPI 数据、最后写 header”，避免中途断电后半包数据被误判为 ready。
@@ -191,11 +215,11 @@ SD 卡目标路径固定为：
 ```text
 [WAVE] sync skip/already current: part=normal(0) checksum=0x35B7277B addr=0x90400040
 [WAVE] sync skip/already current: part=ac_coupling(1) checksum=0x9C4214E8 addr=0x90800040
-[WAVE] sync skip/already current: part=bus_ground(2) checksum=0x194F90CE addr=0x90C00040
-[WAVE] sync skip/already current: part=insulation(3) checksum=0x88B8AE37 addr=0x91000040
-[WAVE] sync skip/already current: part=cap_aging(4) checksum=0x7256CAF9 addr=0x91400040
-[WAVE] sync skip/already current: part=pwm_abnormal(5) checksum=0xA3E5B3CA addr=0x91800040
-[WAVE] sync skip/already current: part=igbt_fault(6) checksum=0x3336670E addr=0x91C00040
+[WAVE] sync skip/already current: part=insulation(2) checksum=... addr=0x90C00040
+[WAVE] sync skip/already current: part=cap_aging(3) checksum=... addr=0x91000040
+[WAVE] sync skip/already current: part=igbt_fault(4) checksum=... addr=0x91400040
+[WAVE] sync skip/already current: part=bus_ground(5) checksum=... addr=0x91800040
+[WAVE] sync skip/already current: part=pwm_abnormal(6) checksum=... addr=0x91C00040
 [DAC WAVE] full sync done: ready_mask=0x7F sd_sync_mask=0x7F
 [DAC WAVE] baseline source=QSPI sps=102400 count=516088 addr=0x90400040
 [DAC] start sps=102400
@@ -215,16 +239,16 @@ SD 卡目标路径固定为：
 
 ```text
 0: 交流窜入
-1: 母线接地
-2: 绝缘劣化
-3: 电容老化
-4: PWM异常
-5: IGBT故障
+1: 绝缘劣化
+2: 电容老化
+3: IGBT故障
+4: 母线接地
+5: PWM异常
 ```
 
 故障详情页提供：
 
-- 默认故障持续时间 `10s`。
+- 默认故障持续时间 `120s`。
 - `-` / `+` 调整持续时间。
 - `触发` 调用 `DAC_FaultBurst_Trigger(fault_id_0_5, duration_s)`。
 - `停止` 调用 `DAC_FaultBurst_Stop()`。
@@ -236,12 +260,14 @@ SD 卡目标路径固定为：
 - 不恢复 GUI 资源同步。
 - 不改变 W25Q256 分区布局。
 
-本次已强化触发日志。PWM 故障触发成功时应出现类似：
+本次已强化触发日志。母线接地故障触发成功时应出现类似：
 
 ```text
-[DAC BURST] request: id=4 part=5 addr=0x91800040 count=516088 ret=0
-[DAC BURST] trigger ok: id=4 dur=10s
+[DAC BURST] request: id=4 code=E05 part=bus_ground(5) addr=0x91800040 count=516088 checksum=0x... ret=0
+[DAC BURST] trigger ok: id=4 dur=120s
 ```
+
+PWM 异常的 UI id 是 `5`，对应 `E06 pwm_abnormal` 和 W25Q 分区 `6`；IGBT 故障的 UI id 是 `3`，对应 `E04 igbt_fault` 和 W25Q 分区 `4`。不要再按旧文档把 PWM 当成 `id=4`。
 
 故障结束或停止后会切回 normal：
 
@@ -278,19 +304,24 @@ int8_t QSPI_W25Qxx_ForceMemoryMapped(void);
 C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_STM32_ESP32
 ```
 
-优先阅读其交接文档：
+本轮已读取的监测端/上位机/ESP32 文档：
 
 ```text
-C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_STM32_ESP32\NEXT_AI_HANDOFF_TECHNICAL_STATUS_20260504.md
+C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_STM32_ESP32\STM32H7+FreeRTOS+LVGL+ESP32\PROJECT_OVERVIEW.md
+C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_STM32_ESP32\STM32H7+FreeRTOS+LVGL+ESP32\README.md
+C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_STM32_ESP32\STM32H7+FreeRTOS+LVGL+ESP32\ESP8266_Logic_and_ESP32_WROOM32E_UE_Migration_Assessment.md
+C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_STM32_ESP32\esp32_spi_coprocessor\README.md
+C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_STM32_ESP32\Edge_Wind_System\README.md
+C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_STM32_ESP32\STM32H7+FreeRTOS+LVGL+ESP32\X-CUBE-AI\App\network_generate_report.txt
 ```
 
 当前稳定链路：
 
 | 子系统 | 责任 |
 | --- | --- |
-| STM32 监测固件 | ADC 采样、FFT、诊断算法、SPI full snapshot |
-| ESP32 协处理器 | WiFi、HTTP 上传、接收 STM32 full frame、返回服务器命令 |
-| Flask 服务端 | `/api/node/full_frame_bin` 解码、WebSocket/HTTP 展示、故障记录 |
+| STM32 监测固件 | AD7606/ADC 采样、FFT、AI 推理、向通信侧输出 summary/full telemetry |
+| ESP32 SPI 协处理器 | SPI 作为 STM32<->ESP32 主业务链路，ESP32 负责 Wi-Fi、HTTP、重试、服务器命令解析 |
+| Flask 服务端 | `POST /api/register`、`POST /api/node/heartbeat`、summary/full telemetry 接收，WebSocket/HTTP 展示、故障记录 |
 | Web 前端 | 实时波形、FFT、故障、历史、报告 |
 
 监测端当前稳定结论：
@@ -303,9 +334,28 @@ payload length: 49348 bytes
 stable full upload interval: about 2.0s/frame
 ```
 
+AI 端最新 STM32 交接文档是 `docs\v68_wind_sensor_public_fused_single_stm32_handoff.md`，面向监测端 STM32H750 的部署合同为：
+
+```text
+model family: dataset_v68_wind_sensor_public_fused_single_v6
+TFLite: model_float32.tflite, 250,024 bytes
+network: one 7-class X-CUBE-AI network
+inputs:
+  serving_default_X_dwt0  f32(1x104)
+  serving_default_X_feat0 f32(1x116)
+  serving_default_X_spec0 f32(1x512x4)
+output:
+  nl_23 f32(1x7)
+MACC: 6,216,960
+weights: 238,972 B
+activations: 295,904 B
+```
+
+v68 交接明确没有 raw-lite 输入、没有 E00 guard/router、没有第二模型、没有硬规则 masking。AI 仓库 `CURRENT_STATUS.md` 同时仍把 v67 raw-lite 版本列为 production candidate；因此监测端正式替换前，需要 AI 端确认“最终部署采用 v67 还是 v68”。三端交接当前按 2026-06-16 v68 STM32 handoff 记录最新监测端生成状态。
+
 播放端联调时，监测端应接收真实 ADC 输入，而不是只跑 `sim.py`。`sim.py` 只能验证 Web 或服务端，不代表 DAC8568 输出已经被监测端正确诊断。
 
-## 9. 双项目联调流程
+## 9. 三端联调流程
 
 播放端：
 
@@ -340,7 +390,7 @@ python app.py
 联调步骤：
 
 1. 先保持播放端 normal 输出，确认监测端波形稳定。
-2. 依次触发交流窜入、母线接地、绝缘劣化、电容老化、PWM 异常、IGBT 故障。
+2. 依次触发交流窜入、绝缘劣化、电容老化、IGBT 故障、母线接地、PWM 异常。
 3. 每次记录播放端串口、监测端波形、FFT、故障识别、Web 日志和报告。
 4. 每个故障结束后确认系统能回到 normal。
 
@@ -370,7 +420,7 @@ git status --short --branch
 - `Core\Inc\main.h` 中 `DAC_WAVE_REQUIRE_SD_SYNC=0`，`DAC_WAVE_BOOT_FULL_SYNC=1`。
 - `COM8 @ 921600` 能看到 `ready=0x7F`。
 - 7 个 W25Q256 分区同步日志为 `sync ok` 或 `sync skip/already current`。
-- PWM 触发日志应有 `id=4 part=5 ret=0`。
+- 母线接地触发日志应有 `id=4 code=E05 part=bus_ground(5) ret=0`；PWM 触发日志应有 `id=5 code=E06 part=pwm_abnormal(6) ret=0`。
 
 再确认监测端：
 
@@ -381,10 +431,23 @@ git status --short --branch
 
 检查点：
 
-- 阅读 `NEXT_AI_HANDOFF_TECHNICAL_STATUS_20260504.md`。
+- 阅读 `STM32H7+FreeRTOS+LVGL+ESP32\PROJECT_OVERVIEW.md`、`esp32_spi_coprocessor\README.md`、`Edge_Wind_System\README.md` 和 `X-CUBE-AI\App\network_generate_report.txt`。
 - 服务器、ESP32、STM32 上传链路版本匹配。
 - Web 页面能看到 `4ch x 4096 waveform + 4ch x 2048 FFT`。
 - `/api/node/full_frame_bin` 能持续接收真实 full frame。
+
+再确认 AI 端：
+
+```powershell
+cd C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_AI_Training
+git status --short --branch
+```
+
+检查点：
+
+- 阅读 `CURRENT_STATUS.md` 和 `docs\v68_wind_sensor_public_fused_single_stm32_handoff.md`。
+- 明确当前要下发监测端的模型版本：v67 是 `CURRENT_STATUS.md` 中的 production candidate，v68 是 2026-06-16 最新 STM32 handoff。
+- 若采用 v68，监测端只接 3 个输入：`X_dwt[104]`、`X_feat[116]`、`X_spec[512,4]`，不接 `X_rawlite`。
 
 调试优先级：
 
@@ -393,8 +456,9 @@ git status --short --branch
 3. 监测端 ADC 原始波形。
 4. FFT 特征。
 5. 故障诊断阈值或算法。
-6. ESP32 上传。
-7. Web 展示和报告。
+6. AI 端 v67/v68 模型选择和 X-CUBE-AI 生成代码一致性。
+7. ESP32 上传。
+8. Web 展示和报告。
 
 最小验收标准：
 
@@ -417,21 +481,21 @@ Erase Done.Programming Done.Verify OK.Application running ...
 
 COM8:
 [WAVE] sync skip/already current: part=normal(0) checksum=0x35B7277B addr=0x90400040
-[WAVE] sync skip/already current: part=pwm_abnormal(5) checksum=0xA3E5B3CA addr=0x91800040
+[WAVE] sync skip/already current: part=pwm_abnormal(6) checksum=... addr=0x91C00040
 [DAC WAVE] full sync done: ready_mask=0x7F sd_sync_mask=0x7F
 [DAC WAVE] baseline source=QSPI sps=102400 count=516088 addr=0x90400040
 [DAC] ... ready=0x7F sd=0x7F boot=1 stream=1 src=0 mmap=1 busy=0
 ```
 
-建议把本次状态作为“幂等 SD->W25Q 同步 + DAC 播放恢复 + 双项目交接文档”的稳定标签。
+建议把本次状态作为“幂等 SD->W25Q 同步 + DAC 播放恢复 + 三端交接文档”的稳定标签。
 
 ## 13. 2026-05-05 全面审计后追加固化项
 
 本轮审计后的主线约束已经落地到工程文件中，后续接手时请把这些点当成硬边界：
 
 - FreeRTOS portable 层已经从 `RVDS/ARM_CM4F` 切换为 `RVDS/ARM_CM7/r0p1`，保持 `configENABLE_FPU=1`。
-- 旧 `GUI-Guider_Runtime`、`GUI-Guider_Source` 和旧 `dac_wave_sync` 已移动到 `legacy_not_build/`，不要重新加入 Keil 主工程。
-- 当前有效 scatter 仍是 `MDK-ARM/STM32H750XBH6_d2.sct`，不要改用旧 `STM32H750XBH6.sct`。
+- 旧 `GUI-Guider_Runtime`、`GUI-Guider_Source`、旧 `dac_wave_sync`、旧 FreeRTOS 替换包和旧 scatter 已从干净主项目目录移除，不要重新加入 Keil 主工程。
+- 当前有效 scatter 仍是 `MDK-ARM/STM32H750XBH6_d2.sct`；旧 `STM32H750XBH6.sct` 已删除。
 - H750XBH6 下载继续使用工程内已验证的 `STM32H7x_2048.FLM`，不要切到 H743 Device 或按 H743 内部 Flash 假设重配。
 - DAC8568 的 D2 SRAM DMA 大缓冲接近占满 D2 区，已在 `dac8568_dma.c` 增加编译期预算检查；新增 DMA 缓冲前必须先看 map。
 - `tools/check_keil_audit.ps1` 是只读审计脚本，用于确认 Keil 工程没有退回 CM4F port、没有重新引用旧 GUI/QSPI 资源代码，并检查 map 中 D2 SRAM 余量。
@@ -476,3 +540,21 @@ Expected logs when the marker is absent:
 [DAC] init ok, SD sync not requested
 [DAC WAVE] boot load begin(from QSPI): partitions=7
 ```
+
+## 15. 2026-06-16 三端文档对齐追加
+
+本轮已读取三端当前文档，并把播放端自己的交接文档对齐到以下事实：
+
+- 播放端仍是独立 HIL 故障注入源，不接 AI 模型、不接服务器、不负责 ESP32 上传。
+- 播放端 SD 波形只把 7 个 `.bin` 当作 D8CW 波形文件解析：`normal`、`ac_coupling`、`insulation`、`cap_aging`、`igbt_fault`、`bus_ground`、`pwm_abnormal`。`summary.json` 是追溯元数据，`SYNC_NOW.TXT` 是一次性同步触发标记，不能当作波形或模型输入。
+- 当前代码的 W25Q 分区顺序是 E00-E06 canonical order：0 normal、1 ac、2 insulation、3 cap、4 IGBT、5 bus ground、6 PWM。
+- 当前代码的 UI fault id 是 0 ac、1 insulation、2 cap、3 IGBT、4 bus ground、5 PWM；默认触发时长是 `120s`。
+- AI 端 `CURRENT_STATUS.md`（2026-06-15）仍把 v67 raw-lite 单 7 类模型列为 production candidate；AI 端 `v68_wind_sensor_public_fused_single_stm32_handoff.md`（2026-06-16）给出了最新监测端 STM32 handoff，合同为 3 输入、1 输出、无 raw-lite、无 guard/router。
+- 监测端 X-CUBE-AI 报告确认 v68 `network` 已生成：输入 `X_dwt/X_feat/X_spec`，输出 `nl_23[7]`，MACC `6,216,960`，weights `238,972 B`，activations `295,904 B`。
+- 监测端文档仍混有 ESP8266 旧说明和 ESP32 SPI 协处理器新方向。当前三端交接应把 ESP32 native coprocessor 当作目标方向：SPI 是 STM32<->ESP32 主业务链路，ESP32 负责 Wi-Fi/HTTP/重试/服务器命令解析。
+
+待确认项：
+
+1. AI 端是否正式把 v68 替代 v67 设为 production candidate。
+2. 监测端是否已把 v68 X-CUBE-AI 生成文件完整烧录到 STM32；AI handoff 记录为 Keil build OK，但当时因无调试器未完成下载。
+3. HIL 联调时 Web/报告展示是否只显示模型主类输出，`summary.json` 中的注入子类型只能作为演示追溯信息，不能伪装成模型预测子类型。

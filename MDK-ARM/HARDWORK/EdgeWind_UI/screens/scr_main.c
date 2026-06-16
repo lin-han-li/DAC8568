@@ -46,7 +46,7 @@ static lv_obj_t * s_placeholder_status_sub_lbl = NULL;
 
 /* Placeholder controls (fault screen) */
 static uint8_t s_placeholder_fault_id = 0xFFu; /* 0..5 */
-static uint32_t s_fault_duration_s[EW_FAULT_COUNT] = {10u, 10u, 10u, 10u, 10u, 10u};
+static uint32_t s_fault_duration_s[EW_FAULT_COUNT] = {120u, 120u, 120u, 120u, 120u, 120u};
 
 static lv_obj_t * s_placeholder_duration_caption_lbl = NULL;
 static lv_obj_t * s_placeholder_duration_value_lbl = NULL;
@@ -361,7 +361,7 @@ static void placeholder_key_event_cb(lv_event_t *e)
 static void placeholder_update_duration_label(void)
 {
     if (!s_placeholder_duration_value_lbl) return;
-    uint32_t dur = 10u;
+    uint32_t dur = 120u;
     if (s_placeholder_fault_id < EW_FAULT_COUNT) {
         dur = s_fault_duration_s[s_placeholder_fault_id];
     }
@@ -686,11 +686,11 @@ static void placeholder_build_once(void)
 
     /* value */
     s_placeholder_duration_value_lbl = lv_label_create(ctrl);
-    lv_obj_set_width(s_placeholder_duration_value_lbl, 36);
+    lv_obj_set_width(s_placeholder_duration_value_lbl, 54);
     lv_obj_set_style_text_align(s_placeholder_duration_value_lbl, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_font(s_placeholder_duration_value_lbl, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(s_placeholder_duration_value_lbl, lv_color_hex(0x2C3E50), 0);
-    lv_label_set_text(s_placeholder_duration_value_lbl, "10");
+    lv_label_set_text(s_placeholder_duration_value_lbl, "120");
 
     /* + */
     s_placeholder_plus_btn = lv_button_create(ctrl);
