@@ -1,6 +1,6 @@
 # V69 Aux4 Playback Handoff
 
-Updated: 2026-06-22
+Updated: 2026-07-01
 
 This is the playback-side handoff document for V69 Aux4 integration. It records the contract that the AI training project and the monitor project must follow, but it does not modify either project.
 
@@ -147,6 +147,31 @@ Programming note:
 
 - Do not program this H750 target by dragging the hex file to the `DAPLINK` mass-storage drive. That DAPLink volume reports an F103-style board target and returns `Flash algorithm write verify command FAILURE`.
 - Use the Keil target download path. In this run, waiting for the Keil flash command to finish produced the valid `Erase Done / Programming Done / Verify OK / Application running ...` log.
+
+## 0.5 2026-07-01 Playback Output Stability Test
+
+Current published rollback point:
+
+- Tag `V3.1.0-v74-riso-20260701` points to commit `543550a` and is the V74 R_iso/Aux4 playback baseline.
+- Optimization branch `codex/playback-output-stability-optimization` was tested on board after the baseline tag.
+
+Board-tested result:
+
+- The only retained output-stability change is `DAC8568_REF_REFRESH_MS = 0`, which disables the once-per-second in-stream DAC reference refresh frames.
+- The current single-change firmware built with Keil `0 Error(s), 0 Warning(s)` and was downloaded through Keil. The user reported output is currently normal.
+
+Do not repeat these rejected optimizations on the current DuPont-wire/DAC8568 module setup:
+
+- Do not change SPI1 `PA5/SCK` and `PA7/MOSI` from `GPIO_SPEED_FREQ_LOW` to `GPIO_SPEED_FREQ_VERY_HIGH`. The high-speed GPIO setting caused DAC8568 communication errors and the analog output became chaotic.
+- Do not change W25Q256 memory-mapped 0xEC read from `DummyCycles = 4` to `W25Qxx_DUMMY_CYCLES = 8`. The `8` dummy-cycle memory-map setting made A/B/C/D collapse into four straight lines.
+- It is still acceptable for command-mode checked reads to use `W25Qxx_DUMMY_CYCLES = 8`; the rejected change is only for the QSPI memory-mapped playback path.
+
+Current safe playback timing boundary:
+
+- Keep SPI1 GPIO slew conservative: `PA5/PA7 = GPIO_SPEED_FREQ_LOW`, `PA4/SYNC = GPIO_SPEED_FREQ_VERY_HIGH`.
+- Keep QSPI memory-mapped playback at `DummyCycles = 4`.
+- Keep D8CW format, W25Q partitioning, Aux4 `.a4b`, and E/F/G/H injection unchanged.
+- If any later optimization causes abnormal A-D output, immediately revert to `V3.1.0-v74-riso-20260701` before continuing tests.
 
 ## 1. Current Decision
 
