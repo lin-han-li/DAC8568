@@ -173,6 +173,12 @@ Current safe playback timing boundary:
 - Keep D8CW format, W25Q partitioning, Aux4 `.a4b`, and E/F/G/H injection unchanged.
 - If any later optimization causes abnormal A-D output, immediately revert to `V3.1.0-v74-riso-20260701` before continuing tests.
 
+Startup and fault-diagnosis logs added after the stable single-change test:
+
+- Boot prints `[DAC CFG] version=playback_output_stability_20260701 ref_refresh_ms=0 spi1_sck_mosi_gpio_speed=LOW spi1_sync_gpio_speed=VERY_HIGH qspi_mmap_dummy=4 qspi_cmd_dummy=8 d8cw_channels=4 aux4_source=a4b`.
+- If the DAC service path has to recover, it prints one `[DAC RECOVER]` snapshot with `reason`, `samples`, `fail`, `stagnant`, active QSPI source/index, DMA remaining words/cycles, QSPI mmap/busy state, and Aux4 file/item/inject/default state.
+- Normal 1-second `[DAC]` and `[AUX4]` logs are unchanged and remain the primary 30-minute soak indicators. During a healthy soak, `fail`, `rec`, and `stagnant` should not increase.
+
 ## 1. Current Decision
 
 V69 uses the existing high-speed D8CW waveform package plus a new Aux4 binary sidecar:

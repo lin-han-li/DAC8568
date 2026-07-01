@@ -63,6 +63,8 @@ void    QSPI_W25Qxx_EndCommandMode(void);        // 退出命令独占模式
 uint8_t QSPI_W25Qxx_IsCommandModeBusy(void);     // 查询命令模式是否占用
 void    QSPI_W25Qxx_SetDacPlaybackActive(uint8_t active); // 标记DAC是否正在读取QSPI memory-map
 uint8_t QSPI_W25Qxx_IsDacPlaybackActive(void);   // 查询DAC是否正在读取QSPI memory-map
+uint32_t QSPI_W25Qxx_GetMemoryMappedDummyCycles(void);
+uint32_t QSPI_W25Qxx_GetCommandReadDummyCycles(void);
 	
 int8_t 	QSPI_W25Qxx_SectorErase(uint32_t SectorAddress);		// 扇区擦除，4K字节， 参考擦除时间 45ms
 int8_t 	QSPI_W25Qxx_BlockErase_64K (uint32_t SectorAddress);	// 块擦除，  64K字节，参考擦除时间 150ms，实际使用建议使用64K擦除，擦除的时间最快
@@ -82,7 +84,8 @@ int8_t  QSPI_W25Qxx_BeginCommandMode(void);
 void    QSPI_W25Qxx_EndCommandMode(void);
 uint8_t QSPI_W25Qxx_IsCommandModeBusy(void);
 int8_t  QSPI_W25Qxx_ForceMemoryMapped(void);
+uint32_t QSPI_W25Qxx_GetMemoryMappedDummyCycles(void);
+uint32_t QSPI_W25Qxx_GetCommandReadDummyCycles(void);
 
 #endif // QSPI_w25q64_H 
-
 

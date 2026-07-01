@@ -10,6 +10,7 @@
 
 #include <math.h>
 #include <stddef.h>
+#include <stdio.h>
 
 #define DAC8568_CMD_WRITE_INPUT 0x00u
 #define DAC8568_CMD_UPDATE_DAC 0x01u
@@ -197,6 +198,44 @@ static uint32_t dac8568_get_tx_sample_counter(void) {
   }
 
   return cycles_a * samples_per_buf + samples_in_buf;
+}
+
+static void dac8568_log_recover_snapshot(uint32_t now,
+                                         uint32_t recover_reason,
+                                         uint32_t samples,
+                                         uint32_t fails) {
+  uint8_t source = g_qspi_active_source;
+  uint32_t qspi_index = 0u;
+  uint32_t qspi_samples = 0u;
+  uint32_t dma_remaining = __HAL_DMA_GET_COUNTER(&hdma_spi1_tx);
+  DAC8568_Aux4Status_t aux4_status;
+
+  if (source < DAC8568_QSPI_SOURCE_MAX) {
+    qspi_index = g_qspi_wave_index[source];
+    qspi_samples = g_qspi_wave_samples[source];
+  }
+
+  DAC8568_Aux4_GetStatus(&aux4_status);
+  printf("[DAC RECOVER] tick=%lu rec=%lu reason=%lu samples=%lu last_samples=%lu fail=%lu last_fail=%lu stagnant=%lu src=%u qspi_index=%lu qspi_samples=%lu dma_rem=%lu dma_cycles=%lu mmap=%u busy=%u aux_file=%s aux_item=%lu aux_inject=%lu aux_default=%u\r\n",
+         (unsigned long)now,
+         (unsigned long)g_recover_count,
+         (unsigned long)recover_reason,
+         (unsigned long)samples,
+         (unsigned long)g_service_last_samples,
+         (unsigned long)fails,
+         (unsigned long)g_service_last_fail,
+         (unsigned long)g_stagnant_count,
+         (unsigned)source,
+         (unsigned long)qspi_index,
+         (unsigned long)qspi_samples,
+         (unsigned long)dma_remaining,
+         (unsigned long)g_dma_buf_cycles,
+         (unsigned)QSPI_W25Qxx_IsMemoryMapped(),
+         (unsigned)QSPI_W25Qxx_IsCommandModeBusy(),
+         aux4_status.active_file,
+         (unsigned long)aux4_status.last_item_index,
+         (unsigned long)aux4_status.inject_count,
+         (unsigned)aux4_status.using_default);
 }
 
 static void dac8568_tim12_stop(void) {
@@ -691,6 +730,10 @@ void DAC8568_DMA_GetSampleCounter(uint32_t *sample_count) {
   }
 }
 
+uint32_t DAC8568_DMA_GetRefRefreshMs(void) {
+  return DAC8568_REF_REFRESH_MS;
+}
+
 void DAC8568_DMA_Service(void) {
   uint8_t manual = g_manual_recover_pending;
   if (manual != 0u) {
@@ -752,6 +795,7 @@ void DAC8568_DMA_Service(void) {
   if ((recover_reason & DAC8568_RECOVER_REASON_MANUAL) != 0u) {
     g_manual_recover_count++;
   }
+  dac8568_log_recover_snapshot(now, recover_reason, samples, fails);
   dac8568_set_stream_running(0u);
   dac8568_tim12_stop();
   (void)HAL_SPI_Abort(&hspi1);

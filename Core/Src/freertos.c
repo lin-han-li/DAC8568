@@ -679,6 +679,10 @@ void Main_Task(void *argument)
   s_fault_remaining_s = 0u;
   dac_fault_queue_reset();
   dac_wave_print_contract();
+  printf("[DAC CFG] version=playback_output_stability_20260701 ref_refresh_ms=%lu spi1_sck_mosi_gpio_speed=LOW spi1_sync_gpio_speed=VERY_HIGH qspi_mmap_dummy=%lu qspi_cmd_dummy=%lu d8cw_channels=4 aux4_source=a4b\r\n",
+         (unsigned long)DAC8568_DMA_GetRefRefreshMs(),
+         (unsigned long)QSPI_W25Qxx_GetMemoryMappedDummyCycles(),
+         (unsigned long)QSPI_W25Qxx_GetCommandReadDummyCycles());
 
   /* NOTE: FatFs SD driver (FATFS/Target/sd_diskio.c) gates SD_initialize() on
    * osKernelRunning(), so SD mount/sync must happen after scheduler start. */
