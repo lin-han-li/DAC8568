@@ -179,6 +179,14 @@ Startup and fault-diagnosis logs added after the stable single-change test:
 - If the DAC service path has to recover, it prints one `[DAC RECOVER]` snapshot with `reason`, `samples`, `fail`, `stagnant`, active QSPI source/index, DMA remaining words/cycles, QSPI mmap/busy state, and Aux4 file/item/inject/default state.
 - Normal 1-second `[DAC]` and `[AUX4]` logs are unchanged and remain the primary 30-minute soak indicators. During a healthy soak, `fail`, `rec`, and `stagnant` should not increase.
 
+30-minute soak evidence after Keil rebuild/download:
+
+- Serial monitor: `COM16 @ 921600`, duration `1800s`, start `2026-07-01T23:51:58+08:00`.
+- Captured `5389` lines: `1797` `[DAC]` lines and `3592` `[AUX4]` lines.
+- Max counters during the soak: `fail=0`, `rec=0`, `stagnant=0`, `refresh=0`, `parse_error=0`, and `[DAC RECOVER]` count `0`.
+- Final DAC line: `[DAC] ok=197406351 fail=0 skip=0 rec=0 reason=0 ref=1 refresh=0 stagnant=0 ready=0x7F sd=0x00 boot=1 stream=1 src=0 mmap=1 busy=0`.
+- The monitor was attached after firmware download/boot, so this soak log did not capture the startup `[DAC CFG]` line. The startup line is still emitted on the next reset or download.
+
 ## 1. Current Decision
 
 V69 uses the existing high-speed D8CW waveform package plus a new Aux4 binary sidecar:
