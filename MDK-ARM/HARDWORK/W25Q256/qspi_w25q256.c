@@ -683,7 +683,7 @@ int8_t QSPI_W25Qxx_MemoryMappedMode(void)
 	s_command.SIOOMode          = QSPI_SIOO_INST_EVERY_CMD;			// 每次传输数据都发送指令	
 	s_command.AddressMode 		 = QSPI_ADDRESS_4_LINES; 				// 4线地址模式
 	s_command.DataMode    		 = QSPI_DATA_4_LINES;    				// 4线数据模式
-	s_command.DummyCycles 		 = W25Qxx_DUMMY_CYCLES;					// Keep memory-mapped reads aligned with checked command-mode reads.
+	s_command.DummyCycles 		 = 4;											// W25Q256 0xEC memory-mapped read uses mode byte plus 4 dummy cycles.
 	s_command.Instruction 		 = W25Qxx_CMD_FastReadQuad_IO; 		// 1-4-4模式下(1线指令4线地址4线数据)，快速读取指令
 	
 	s_mem_mapped_cfg.TimeOutActivation = QSPI_TIMEOUT_COUNTER_DISABLE; // 禁用超时计数器, nCS 保持激活状态
