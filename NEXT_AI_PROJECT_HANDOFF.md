@@ -1,6 +1,6 @@
 # NEXT AI 项目技术交接报告
 
-更新时间：2026-06-16
+更新时间：2026-06-22
 播放端项目：`C:\Users\pengjianzhong\Desktop\MY_Project\STM32H750XBH6_DAC8568_FreeRTOS_LVGL9.4.0`  
 监测诊断端项目：`C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_STM32_ESP32`  
 AI 训练端项目：`C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_AI_Training`
@@ -15,7 +15,7 @@ AI 训练端项目：`C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_AI_Trai
 | 端 | 根目录 | 本端需要知道的关键目录/文档 |
 | --- | --- | --- |
 | 监测诊断端 | `C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_STM32_ESP32` | STM32 固件：`STM32H7+FreeRTOS+LVGL+ESP32`；Web 后端/前端：`Edge_Wind_System`；ESP32 原生协处理器：`esp32_spi_coprocessor` |
-| AI 训练端 | `C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_AI_Training` | 当前状态：`CURRENT_STATUS.md`；最新 STM32 handoff：`docs\v68_wind_sensor_public_fused_single_stm32_handoff.md`；STM32 部署包：`stm32_deploy_packages\dataset_v68_wind_sensor_public_fused_single_v6_single7_20260616_031448` |
+| AI 训练端 | `C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_AI_Training` | 当前状态：`CURRENT_STATUS.md`；稳定线：`docs\v68_wind_sensor_public_fused_single_stm32_handoff.md`；V69 Aux4：`docs\v69_a4b_monitor_playback_handoff.md`；V69 RC 部署包：`stm32_deploy_packages\dataset_v69_wind_sensor_aux4_public_fused_single_publicfix_single7_20260617_001615_rc` |
 
 本轮已读取或需要优先读取的另外两端文档：
 
@@ -24,10 +24,13 @@ C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_STM32_ESP32\STM32H7+FreeRTOS+
 C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_STM32_ESP32\STM32H7+FreeRTOS+LVGL+ESP32\README.md
 C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_STM32_ESP32\STM32H7+FreeRTOS+LVGL+ESP32\ESP8266_Logic_and_ESP32_WROOM32E_UE_Migration_Assessment.md
 C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_STM32_ESP32\STM32H7+FreeRTOS+LVGL+ESP32\X-CUBE-AI\App\network_generate_report.txt
+C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_STM32_ESP32\docs\three_side_handoff_monitor_stm32.md
 C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_STM32_ESP32\esp32_spi_coprocessor\README.md
 C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_STM32_ESP32\Edge_Wind_System\README.md
 C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_AI_Training\CURRENT_STATUS.md
 C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_AI_Training\docs\v68_wind_sensor_public_fused_single_stm32_handoff.md
+C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_AI_Training\docs\v69_a4b_monitor_playback_handoff.md
+C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_AI_Training\stm32_deploy_packages\dataset_v69_wind_sensor_aux4_public_fused_single_publicfix_single7_20260617_001615_rc\README.md
 ```
 
 ## 1. 项目定位与三端关系
@@ -561,6 +564,8 @@ Expected logs when the marker is absent:
 
 ## 16. 2026-06-16 v69 aux4 稳步推进门禁
 
+> 历史记录：本节描述的是早期 JSON sidecar/smoke 方案，当前 V69 正式实现已由第 17 节和 `V69_AUX4_PLAYBACK_HANDOFF.md` 覆盖。
+
 AI 训练端已新增 v69 aux4 smoke 线：
 
 ```text
@@ -597,3 +602,93 @@ v69 对播放端的兼容约束：
 3. v68 验收通过后，AI 端再生成 v69 全量训练产物和正式 STM32 deploy package。
 4. 播放端只有在监测端需要真实 aux4 硬件链路时，才实现 `aux4_schedule.json` 到 DAC8568 E/F/G/H 的低速输出。
 5. 如果 v69 在 normal 或七类 HIL 回放上退化，保持 v68 部署，不扩展 Web 协议。
+
+## 17. 2026-06-17 V69 Aux4 正式覆盖说明
+
+本节覆盖第 16 节的 `aux4_schedule.json` smoke/bring-up 方案。当前播放端已经按 V69 正式播放包结构实现，权威文档为：
+
+```text
+V69_AUX4_PLAYBACK_HANDOFF.md
+```
+
+当前三端接口合同以该文件为准：
+
+- 稳定运行路径是 `0:/wave/aux4_schedule.a4b`，不是 `aux4_schedule.json`。
+- `aux4_schedule.json` 仅允许作为 AI 端可选调试镜像，不作为播放端稳定运行输入。
+- SD 卡 `wave/` 包必须包含七个 4 通道 D8CW `.bin`、`aux4_schedule.a4b`、`summary.json`、`SYNC_NOW.TXT`。
+- 播放端只负责输出 A/B/C/D 高频模拟量和 E/F/G/H Aux4 低速模拟量，不接 AI 模型、不接 golden vectors、不接 TFLite、不接 X-CUBE-AI 产物。
+- AI 端负责生成 `.bin/.a4b/summary.json`，其中 `.a4b` 每个 item 对应 `16384` 个 DAC 采样点，也对应监测端 `4096 @ 25.6 kHz` 的一个 160ms AI 窗口。
+- 监测端负责采集 AD7606 ch0-ch7；ch0-ch3 进入原高频特征链路，ch4-ch7 每个 4096 点窗口求均值，按 `0.5V..4.5V` 反算 `X_aux[4]`。
+- 当前 V69 已进入 publicfix RC 板端验收阶段；AI 端已交付 RC 包，监测端已烧录 RC，但 normal 5 分钟和七类 HIL 验收未完成前，不替换 v68 稳定回退线。
+
+## 18. 2026-06-18 三端最新状态快照
+
+本轮只读取 AI 端和监测端文档，不修改其他仓库；播放端自己的权威文档已同步到 `V69_AUX4_PLAYBACK_HANDOFF.md`。
+
+- AI 训练端：`CURRENT_STATUS.md` 已记录 V69 publicfix RC 产物。部署包为 `C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_AI_Training\stm32_deploy_packages\dataset_v69_wind_sensor_aux4_public_fused_single_publicfix_single7_20260617_001615_rc`，匹配回放包为 `C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_AI_Training\data_v69_wind_sensor_aux4_public_fused_single_publicfix\playback_hil\dataset_v69_publicfix_rc_test_sd_g000000\wave`，golden vectors 为 `C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_AI_Training\stm32_test_vectors\dataset_v69_wind_sensor_aux4_public_fused_single_publicfix_20260617_001615_rc`。
+- AI 端 `.a4b` 合同已落地：七个 D8CW 仍为 4 通道，`aux4_schedule.a4b` 是稳定路径，`aux4_schedule.json` 只作为调试镜像；当前 publicfix RC 回放包用于播放端 SD 卡 `wave/`。
+- 监测端：`docs/three_side_handoff_monitor_stm32.md` 记录 V69 publicfix RC 已接入并烧录，用于板端验收；AD7606 ch4-ch7 已做 Aux4 窗口均值、`0.5V..4.5V` 反算和 `aux_valid` mask；ESP32/Web payload 暂不扩 Aux4。
+- 监测端 X-CUBE-AI 实际绑定顺序必须按生成报告：`X_aux[4]`、`X_dwt[104]`、`X_feat[116]`、`X_spec[512,4]`。不要沿用早期文档里的概念顺序 `DWT/FEAT/SPEC/AUX` 作为 STM32 输入数组顺序。
+- 播放端：当前代码负责 `.a4b` 同步到 W25Q256 Aux4 双 slot，并按当前 D8CW `qspi_wave_index / 16384` 推导 Aux4 item；A/B/C/D 高速 D8CW 不扩到 8 通道，E/F/G/H 输出 Aux4 保持电压。
+- 验收口径：V69 publicfix RC 仍不是稳定替代结论。先用匹配回放包跑 `normal.bin` 连续 5 分钟，确认不反复误报 E01/E04，再跑七类 HIL 并记录 `aux4`、`aux_valid`、`ppermil[7]`、`confidence`、`feature_ms/infer_ms/total_ms`。
+
+## 19. 2026-06-19 V70_r2 部署进行中状态
+
+本节只修改播放端自己的交接记录。用户已启动监测端 V70_r2 部署；当前播放端记录为“部署中”，不写成“已完成部署”，直到监测端文档、`network_generate_report.txt`、Keil 下载日志和串口 quick check 都更新为 V70_r2。
+
+- AI 训练端 V70_r2 RC deploy package：`C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_AI_Training\stm32_deploy_packages\dataset_v70_r2_wind_realfield_e01sep_single7_20260619_023056_rc`。
+- V70_r2 模型仍是单 `network`、7 类输出、无 guard/router；X-CUBE-AI 生成输入顺序仍为 `X_aux[4]`、`X_dwt[104]`、`X_feat[116]`、`X_spec[512,4]`。
+- AI 端 V70_r2 deploy README 指向的正式匹配回放包：`C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_AI_Training\data_v70_wind_realistic_aux_public_single_r2\playback_hil\dataset_v70_r2_wind_realfield_e01sep_test_sd_g000000\wave`。
+- 播放端数据结构不变：七个 D8CW `.bin` 仍严格 4 通道 A/B/C/D，Aux4 仍由 `aux4_schedule.a4b` 驱动 E/F/G/H；不要改成 8 通道 D8CW。
+- 播放端 SD 卡不接收 TFLite、X-CUBE-AI network 文件、golden vectors 或 AI self-test payload。
+- 播放端当前固件已 Keil rebuild/flash 通过：`0 Error(s), 0 Warning(s)`，下载日志为 `Erase Done`、`Programming Done`、`Verify OK`、`Application running ...`。
+- `J:\wave` 已按播放端固件算法校验可同步输出：七个 D8CW checksum 匹配，`aux4_schedule.a4b` 为 `4512` bytes，`generation=1781631114`，`payload_fnv1a32=0xEA8E68F7`，7 个 entry 全部绑定成功。
+- `J:\wave` 当前作为已验证播放包记录；若用于 V70_r2 正式 HIL，应明确记录为兼容/bring-up 包，或改用 AI V70_r2 deploy README 指向的正式 matching wave 包并重新校验。
+- V70_r2 仍是 release candidate。正式替代 v68 前，监测端必须完成 golden vectors、`normal.bin` 连续 5 分钟无反复 E01/E04，以及七类 HIL top1/置信度/耗时验收。
+
+## 20. 2026-06-21 v72/v73 三端状态和 J:\wave 历史包
+
+本节只更新播放端自己的交接记录。AI 端和监测端仓库只读，不做任何修改。
+
+- 监测端当前实际部署线是 V72：最新监测端提交/标签为 `v72-single7-monitor-deployed-20260620-182036`，`network_generate_report.txt` 指向 `dataset_v72_wind_e00e01_separated_single7_final`，`edgewind_ai.c` 当前返回 V72 model version。
+- 监测端 V72 已有 build/flash/quick-read 记录：Keil `0 Error(s), 0 Warning(s)`，flash 日志包含 `Erase Done`、`Programming Done`、`Verify OK`、`Application running ...`，串口 quick read 可见 `aux_valid=0x0F`、`ppermil[7]` 和耗时字段。它仍是 RC，正式替代 v68 前还要跑 normal 5 分钟和七类 HIL。
+- AI 端最新候选是 V73：`dataset_v73_ad7606_sync_leakage_public_single`。最终 STM32 deploy package 为 `C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_AI_Training\stm32_deploy_packages\dataset_v73_ad7606_sync_leakage_single7_final`。
+- AI V73 匹配回放包为 `C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_AI_Training\data_v73_ad7606_sync_leakage_public_single\playback_hil\dataset_v73_ad7606sync_test_sd_g000000\wave`。V73 handoff 额外要求监测端 AD7606 ch0..ch3 保持严格同步采样，不做通道延迟补偿、插值或时间平移。
+- V72/V73 对播放端的 SD/DAC 合同不变：七个 D8CW `.bin` 仍是 4 通道，Aux4 稳定路径仍是 `aux4_schedule.a4b`，`aux4_schedule.json` 只作调试镜像，播放端不接模型、golden vectors、TFLite 或 X-CUBE-AI 产物。
+- 2026-06-21 当时复制到 `J:\wave` 的 SD 包是 V73 包，`summary.json`/`aux4_schedule.json` 记录的 dataset 为 `dataset_v73_ad7606_sync_leakage_public_single`。
+- `J:\wave` 播放端格式校验通过：七个 `.bin` 均为 `4194304` bytes、`102400 Hz`、`channels=4`、`sample_count=516088`，D8CW checksum 全部匹配；`aux4_schedule.a4b` 为 `4512` bytes，`generation=1781955505`，`payload_fnv1a32=0xCC4AC198`，224 个 Aux4 item，7 个 entry 全部与对应 D8CW checksum 绑定成功。
+- 当时版本匹配口径：如果做 V72 正式 HIL，应换回 AI V72 matching wave 包；如果使用该 V73 包，必须记录为 V72 固件 + V73 回放包的兼容/bring-up 测试。若做 V73 正式 HIL，应先让监测端完成 V73 部署，再使用 V73 matching wave 包。
+
+## 21. 2026-06-22 v74 conservative + R_iso 当前三端状态
+
+本节只更新播放端自己的交接记录。AI 端和监测端仓库只读，不做任何修改。
+
+- AI 训练端当前候选为 `dataset_v74_ad7606_sync_riso_public_single`，当前推荐使用 conservative 部署包进行监测端和回放端 bring-up。
+- AI 端当前 deploy package：`C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_AI_Training\stm32_deploy_packages\dataset_v74_ad7606_sync_riso_single7_conservative`。
+- AI 端当前 matching wave：`C:\Users\pengjianzhong\Desktop\MY_Project\EdgeWind_AI_Training\data_v74_ad7606_sync_riso_public_single\playback_hil\dataset_v74_ad7606sync_riso_demo_sd_g000000\wave`。
+- 监测端当前模型为 `dataset_v74_ad7606_sync_riso_public_single`，监测端文档记录已回退程序、Keil rebuild 通过，并已通过 Keil 下载到 STM32。
+- V74 仍是单 `network`、7 类输出、无 guard/router/second model/hard masking；X-CUBE-AI 输入顺序仍按生成报告绑定：`X_aux[4]`、`X_dwt[104]`、`X_feat[116]`、`X_spec[512,4]`。
+- 当前 `X_aux[4]` 语义已变为 `T_igbt_C`、`T_dc_cap_C`、`RH_cabinet_pct`、`R_iso_kohm`。`wind_load_pct` 已弃用，不能再接到 `X_aux[3]`。
+- 播放端 SD/DAC 合同不变：七个 `.bin` 仍是 4 通道 D8CW，E/F/G/H 仍由 `aux4_schedule.a4b` 提供；但 A4B 第四值当前必须是 `R_iso_kohm`，不是负载百分比。
+- 监测端要求 AD7606 ch0..ch3 严格同步采样，不做通道延迟补偿、插值或时间平移；ch7 必须把 H 路解码为工程量 `R_iso_kohm`。
+- 当前验收顺序：监测端先跑 v74 golden vectors，再用 v74 matching D8CW+A4B SD 包跑 `normal.bin` 5 分钟，最后跑七类 HIL 并记录 top1、confidence、ppermil、feature_ms、infer_ms、total_ms。
+
+## 22. 2026-06-22 V74 R_iso playback-side fix verified on board
+
+This section records playback-side facts only. AI and monitor repositories were not modified.
+
+- Root cause of the Web value staying around `4000 kOhm`: playback was still using the stale V73 Aux4 QSPI slot / legacy fourth-channel range `8..110`, causing H to output the old midpoint `2.5V`. The V74 monitor correctly decoded `2.5V` as about `4010 kOhm` under the new `20..8000 kOhm` R_iso range.
+- The SD-side V74 data is valid: current A4B is `dataset_v74_ad7606_sync_riso_public_single`, `generation=1782121193`, `payload_fnv1a32=0x97CBCE3E`, with fourth range `20..8000` and default `400`.
+- Playback firmware was fixed to accept both legacy fourth range `8..110` and V74 fourth range `20..8000`, then copy `aux_lo/aux_hi/aux_default` from the A4B header into runtime DAC mapping.
+- Boot now verifies the Aux4 table against all ready D8CW checksums. If QSPI Aux4 is stale or mismatched, playback transiently loads `0:/wave/aux4_schedule.a4b` from SD and verifies again.
+- Keil rebuild passed with `0 Error(s), 0 Warning(s)`. Keil download passed with `Erase Done / Programming Done / Verify OK / Application running ...`.
+- Reset log evidence: QSPI V73 Aux4 `generation=1781955505` failed all seven checksum binds; SD transient V74 Aux4 `generation=1782121193` then loaded, `range_hi_x1000=[125000,115000,98000,8000000]`, and `bind summary: ready=7 verified=7 all=1`.
+- Current runtime source is `source=2` (SD transient), not persistent QSPI Aux4. Because `SYNC_NOW.TXT` was absent, W25Q Aux4 slot was not rewritten. Runtime is correct while the SD card is present; for no-SD boot, place `0:/wave/SYNC_NOW.TXT` on SD and reset once.
+- Do not program this H750 target by dragging the hex file to the `DAPLINK` mass-storage drive. Use Keil target download; the DAPLink MSD identifies as an F103-style target and returns `Flash algorithm write verify command FAILURE`.
+## 23. 2026-06-23 playback expansion board pinout
+
+Playback-side small expansion board pinout is recorded in `PLAYBACK_EXPANSION_BOARD_PINOUT.md`.
+
+Scope: DAC8568 module adapter, four keys, rotary encoder with push switch, and active-low buzzer only. Core-board resources such as SD, W25Q/QSPI, UART, SWD, LCD, SDRAM, SDMMC, and LTDC are not duplicated on this expansion board.
+
+Key pins: DAC8568 adapter uses PA4/PA5/PA7/PA6/PB9; keys use PB12-PB15; current LVGL mapping is PB12 previous, PB13 next, PB14 OK/enter, PB15 back/ESC. Rotary encoder uses PC6/PC7; connect the encoder push switch to PB14 if it should be OK. Buzzer uses PH7 with high = off and low = on.

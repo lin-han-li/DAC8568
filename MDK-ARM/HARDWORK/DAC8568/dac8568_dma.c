@@ -1,5 +1,6 @@
 #include "dac8568_dma.h"
 
+#include "DAC8568/dac8568_aux4.h"
 #include "gpio.h"
 #include "main.h"
 #include "qspi_w25q256.h"
@@ -23,6 +24,10 @@
 #define DAC8568_CHANNEL_B 0x01u
 #define DAC8568_CHANNEL_C 0x02u
 #define DAC8568_CHANNEL_D 0x03u
+#define DAC8568_CHANNEL_E 0x04u
+#define DAC8568_CHANNEL_F 0x05u
+#define DAC8568_CHANNEL_G 0x06u
+#define DAC8568_CHANNEL_H 0x07u
 
 /*
  * DAC8568IDPW(0~5V) + 运放移位放大：
@@ -69,6 +74,10 @@
 #define DAC8568_FRAME_B_PREFIX DAC8568_FRAME_PREFIX(DAC8568_CMD_WRITE_INPUT, DAC8568_CHANNEL_B)
 #define DAC8568_FRAME_C_PREFIX DAC8568_FRAME_PREFIX(DAC8568_CMD_WRITE_INPUT, DAC8568_CHANNEL_C)
 #define DAC8568_FRAME_D_PREFIX DAC8568_FRAME_PREFIX(DAC8568_CMD_WRITE_UPDATE_ALL, DAC8568_CHANNEL_D)
+#define DAC8568_FRAME_E_PREFIX DAC8568_FRAME_PREFIX(DAC8568_CMD_WRITE_INPUT, DAC8568_CHANNEL_E)
+#define DAC8568_FRAME_F_PREFIX DAC8568_FRAME_PREFIX(DAC8568_CMD_WRITE_INPUT, DAC8568_CHANNEL_F)
+#define DAC8568_FRAME_G_PREFIX DAC8568_FRAME_PREFIX(DAC8568_CMD_WRITE_INPUT, DAC8568_CHANNEL_G)
+#define DAC8568_FRAME_H_PREFIX DAC8568_FRAME_PREFIX(DAC8568_CMD_WRITE_UPDATE_ALL, DAC8568_CHANNEL_H)
 #define DAC8568_SOFT_RESET_FRAME (((uint32_t)DAC8568_CMD_SOFTWARE_RESET) << 24)
 
 #define DAC8568_CLR_IGNORE_FRAME ((((uint32_t)DAC8568_CMD_CLEAR_CODE) << 24) | 0x03u)
@@ -404,6 +413,7 @@ static void dac8568_fill_samples(uint32_t *dst, uint32_t sample_count) {
   uint32_t phase_d = g_phase_d;
   uint8_t active_source = g_qspi_active_source;
   uint32_t qspi_index = 0u;
+  uint32_t aux_sample_index = g_sample_count;
 
   if (g_qspi_switch.pending != 0u) {
     __DMB();
@@ -439,6 +449,7 @@ static void dac8568_fill_samples(uint32_t *dst, uint32_t sample_count) {
     if (qspi_index >= g_qspi_wave_samples[active_source]) {
       qspi_index = 0u;
     }
+    aux_sample_index = qspi_index;
   }
 
   for (uint32_t i = 0u; i < sample_count; i++) {
@@ -512,6 +523,19 @@ static void dac8568_fill_samples(uint32_t *dst, uint32_t sample_count) {
       dst_base[1] = DAC8568_CLR_IGNORE_FRAME;
     }
     g_ref_refresh_count++;
+  } else if ((sample_count * DAC8568_WORDS_PER_SAMPLE) >= DAC8568_AUX4_COUNT) {
+    float aux_values[DAC8568_AUX4_COUNT];
+    float aux_volts[DAC8568_AUX4_COUNT];
+    if (DAC8568_Aux4_ConsumeDue(active_source, aux_sample_index, sample_count, aux_values, aux_volts)) {
+      const uint16_t code_e = dac8568_voltage_to_code(aux_volts[0]);
+      const uint16_t code_f = dac8568_voltage_to_code(aux_volts[1]);
+      const uint16_t code_g = dac8568_voltage_to_code(aux_volts[2]);
+      const uint16_t code_h = dac8568_voltage_to_code(aux_volts[3]);
+      dst_base[0] = DAC8568_FRAME_E_PREFIX | ((uint32_t)code_e << 4);
+      dst_base[1] = DAC8568_FRAME_F_PREFIX | ((uint32_t)code_f << 4);
+      dst_base[2] = DAC8568_FRAME_G_PREFIX | ((uint32_t)code_g << 4);
+      dst_base[3] = DAC8568_FRAME_H_PREFIX | ((uint32_t)code_h << 4);
+    }
   }
 }
 
@@ -527,6 +551,7 @@ static void dac8568_dma_on_full(void) {
 
 void DAC8568_DMA_Init(uint32_t sample_rate_hz) {
   g_sample_rate_hz = (sample_rate_hz == 0u) ? 48000u : sample_rate_hz;
+  DAC8568_Aux4_Init();
   g_phase_a = g_phase_b = g_phase_c = g_phase_d = 0u;
   for (uint32_t i = 0u; i < DAC8568_QSPI_SOURCE_MAX; i++) {
     g_qspi_wave_data[i] = NULL;

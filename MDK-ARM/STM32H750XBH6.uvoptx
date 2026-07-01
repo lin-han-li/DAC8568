@@ -5081,6 +5081,18 @@
     </File>
     <File>
       <GroupNumber>20</GroupNumber>
+      <FileNumber>397</FileNumber>
+      <FileType>1</FileType>
+      <tvExp>0</tvExp>
+      <tvExpOptDlg>0</tvExpOptDlg>
+      <bDave2>0</bDave2>
+      <PathWithFileName>.\HARDWORK\DAC8568\dac8568_aux4.c</PathWithFileName>
+      <FilenameWithoutPath>dac8568_aux4.c</FilenameWithoutPath>
+      <RteFlg>0</RteFlg>
+      <bShared>0</bShared>
+    </File>
+    <File>
+      <GroupNumber>20</GroupNumber>
       <FileNumber>396</FileNumber>
       <FileType>5</FileType>
       <tvExp>0</tvExp>
@@ -5088,6 +5100,18 @@
       <bDave2>0</bDave2>
       <PathWithFileName>.\HARDWORK\DAC8568\dac8568_dma.h</PathWithFileName>
       <FilenameWithoutPath>dac8568_dma.h</FilenameWithoutPath>
+      <RteFlg>0</RteFlg>
+      <bShared>0</bShared>
+    </File>
+    <File>
+      <GroupNumber>20</GroupNumber>
+      <FileNumber>398</FileNumber>
+      <FileType>5</FileType>
+      <tvExp>0</tvExp>
+      <tvExpOptDlg>0</tvExpOptDlg>
+      <bDave2>0</bDave2>
+      <PathWithFileName>.\HARDWORK\DAC8568\dac8568_aux4.h</PathWithFileName>
+      <FilenameWithoutPath>dac8568_aux4.h</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
     </File>

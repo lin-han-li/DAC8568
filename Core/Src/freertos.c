@@ -33,6 +33,7 @@
 #include "lv_port_indev.h"
 // Demo 已移除，使用自定义 EdgeWind UI
 #include "EdgeWind_UI/edgewind_ui.h"
+#include "DAC8568/dac8568_aux4.h"
 #include "DAC8568/dac8568_dma.h"
 #include "qspi_w25q256.h"
 #include "sd_waveform.h"
@@ -388,6 +389,8 @@ static bool dac_wave_sd_sync_flag_present(void);
 static bool dac_wave_wait_for_sd_sync_flag(void);
 static void dac_wave_try_clear_sd_sync_flag(void);
 static void dac_wave_print_contract(void);
+static bool dac_aux4_verify_ready_waves(void);
+static int32_t dac_aux4_scale1000(float value);
 
 /* USER CODE END FunctionPrototypes */
 
@@ -743,7 +746,6 @@ void Main_Task(void *argument)
              (unsigned long)s_dac_wave_sd_sync_mask);
 
       if ((s_dac_wave_sd_sync_mask & DAC_WAVE_ALL_PART_MASK) == DAC_WAVE_ALL_PART_MASK) {
-        dac_wave_try_clear_sd_sync_flag();
         break;
       }
 
@@ -753,11 +755,6 @@ void Main_Task(void *argument)
       osDelay(2000);
     }
 
-    if (sync_mutex_locked != 0u) {
-      osMutexRelease(mutex_id);
-      sync_mutex_locked = 0u;
-      printf("[DAC WAVE] unlocked LVGL mutex after SD->W25Q sync\r\n");
-    }
   } else {
     for (uint32_t i = 0u; i < DAC_WAVE_PART_COUNT; i++) {
       SD_DacWavePartition_t part = (SD_DacWavePartition_t)i;
@@ -785,7 +782,42 @@ void Main_Task(void *argument)
     }
   }
 
+  {
+    bool aux4_loaded = false;
+    bool aux4_verified = false;
+
+    if (do_boot_sync != 0u) {
+      aux4_loaded = DAC8568_Aux4_SyncFromSdToQspi(DAC_WAVE_AUX4_SCHEDULE_PATH);
+    }
+    if (!aux4_loaded) {
+      aux4_loaded = DAC8568_Aux4_LoadFromQspi();
+    }
+    if (aux4_loaded) {
+      aux4_verified = dac_aux4_verify_ready_waves();
+    }
+    if (!aux4_verified) {
+      printf("[AUX4] ready-wave bind not verified, trying SD transient load: %s\r\n",
+             DAC_WAVE_AUX4_SCHEDULE_PATH);
+      aux4_loaded = DAC8568_Aux4_LoadFromSd(DAC_WAVE_AUX4_SCHEDULE_PATH);
+      if (aux4_loaded) {
+        aux4_verified = dac_aux4_verify_ready_waves();
+      }
+    }
+    if (!aux4_verified) {
+      printf("[AUX4] no verified schedule for current D8CW set, aux4_source=default\r\n");
+    }
+  }
+  if (do_boot_sync != 0u) {
+    dac_wave_try_clear_sd_sync_flag();
+  }
+  if (sync_mutex_locked != 0u) {
+    osMutexRelease(mutex_id);
+    sync_mutex_locked = 0u;
+    printf("[DAC WAVE] unlocked LVGL mutex after SD->W25Q sync\r\n");
+  }
+
   s_dac_wave_boot_sync_done = 1u;
+  DAC8568_Aux4_SetActiveFile(DAC_WAVE_SD_PATH_NORMAL, true);
   if (do_boot_sync != 0u) {
     printf("[DAC WAVE] full sync done: ready_mask=0x%02lX sd_sync_mask=0x%02lX\r\n",
            (unsigned long)s_dac_wave_ready_mask,
@@ -806,11 +838,12 @@ void Main_Task(void *argument)
     {
       SD_DacWaveInfo_t *base = &s_dac_wave_info[0];
       if (DAC8568_DMA_UseQspiWave(base->qspi_mmap_addr, base->sample_count, base->sample_rate_hz) == 0) {
-      printf("[DAC WAVE] baseline source=QSPI sps=%lu count=%lu checksum=0x%08lX addr=0x%08lX\r\n",
-             (unsigned long)base->sample_rate_hz,
-             (unsigned long)base->sample_count,
-             (unsigned long)base->checksum,
-             (unsigned long)base->qspi_mmap_addr);
+        DAC8568_Aux4_SetActiveFile(DAC_WAVE_SD_PATH_NORMAL, true);
+        printf("[DAC WAVE] baseline source=QSPI sps=%lu count=%lu checksum=0x%08lX addr=0x%08lX\r\n",
+               (unsigned long)base->sample_rate_hz,
+               (unsigned long)base->sample_count,
+               (unsigned long)base->checksum,
+               (unsigned long)base->qspi_mmap_addr);
         stream_enabled = 1u;
         started_sps = base->sample_rate_hz;
       } else {
@@ -848,9 +881,11 @@ void Main_Task(void *argument)
       uint8_t active_source = 0u;
       uint8_t mmap = 0u;
       uint8_t qspi_busy = 0u;
+      DAC8568_Aux4Status_t aux4_status;
 
       DAC8568_DMA_GetStats(&ok, &fail, &skip);
       DAC8568_DMA_GetHealth(&recover, &reason, &ref_rearm, &ref_refresh, &stagnant);
+      DAC8568_Aux4_GetStatus(&aux4_status);
       active_source = DAC8568_DMA_GetActiveQspiSource();
       mmap = QSPI_W25Qxx_IsMemoryMapped();
       qspi_busy = QSPI_W25Qxx_IsCommandModeBusy();
@@ -870,6 +905,38 @@ void Main_Task(void *argument)
              (unsigned)active_source,
              (unsigned)mmap,
              (unsigned)qspi_busy);
+      printf("[AUX4] loaded=%u default=%u source=%u gen=%lu checksum=0x%08lX file=%s items=%lu item=%lu inject=%lu parse_error=%lu values_x1000=[%ld,%ld,%ld,%ld] mv=[%ld,%ld,%ld,%ld]\r\n",
+             (unsigned)aux4_status.loaded,
+             (unsigned)aux4_status.using_default,
+             (unsigned)aux4_status.source,
+             (unsigned long)aux4_status.generation,
+             (unsigned long)aux4_status.payload_checksum,
+             aux4_status.active_file,
+             (unsigned long)aux4_status.active_item_count,
+             (unsigned long)aux4_status.last_item_index,
+             (unsigned long)aux4_status.inject_count,
+             (unsigned long)aux4_status.parse_error_count,
+             (long)dac_aux4_scale1000(aux4_status.values[0]),
+             (long)dac_aux4_scale1000(aux4_status.values[1]),
+             (long)dac_aux4_scale1000(aux4_status.values[2]),
+             (long)dac_aux4_scale1000(aux4_status.values[3]),
+             (long)dac_aux4_scale1000(aux4_status.volts[0]),
+             (long)dac_aux4_scale1000(aux4_status.volts[1]),
+             (long)dac_aux4_scale1000(aux4_status.volts[2]),
+             (long)dac_aux4_scale1000(aux4_status.volts[3]));
+      printf("[AUX4] range_lo_x1000=[%ld,%ld,%ld,%ld] range_hi_x1000=[%ld,%ld,%ld,%ld] default_x1000=[%ld,%ld,%ld,%ld]\r\n",
+             (long)dac_aux4_scale1000(aux4_status.range_lo[0]),
+             (long)dac_aux4_scale1000(aux4_status.range_lo[1]),
+             (long)dac_aux4_scale1000(aux4_status.range_lo[2]),
+             (long)dac_aux4_scale1000(aux4_status.range_lo[3]),
+             (long)dac_aux4_scale1000(aux4_status.range_hi[0]),
+             (long)dac_aux4_scale1000(aux4_status.range_hi[1]),
+             (long)dac_aux4_scale1000(aux4_status.range_hi[2]),
+             (long)dac_aux4_scale1000(aux4_status.range_hi[3]),
+             (long)dac_aux4_scale1000(aux4_status.default_values[0]),
+             (long)dac_aux4_scale1000(aux4_status.default_values[1]),
+             (long)dac_aux4_scale1000(aux4_status.default_values[2]),
+             (long)dac_aux4_scale1000(aux4_status.default_values[3]));
       last_log = now;
     }
 
@@ -938,11 +1005,46 @@ static bool dac_wave_accept_partition(uint32_t index, SD_DacWavePartition_t part
   return true;
 }
 
+static bool dac_aux4_verify_ready_waves(void)
+{
+  bool all_verified = true;
+  uint32_t ready_count = 0u;
+  uint32_t verified_count = 0u;
+
+  for (uint32_t i = 0u; i < DAC_WAVE_PART_COUNT; i++) {
+    if ((s_dac_wave_ready_mask & (1u << i)) == 0u) {
+      continue;
+    }
+    ready_count++;
+    if (DAC8568_Aux4_VerifyWave((uint8_t)i,
+                                s_dac_wave_info[i].sample_rate_hz,
+                                s_dac_wave_info[i].sample_count,
+                                s_dac_wave_info[i].checksum)) {
+      verified_count++;
+    } else {
+      all_verified = false;
+    }
+  }
+  printf("[AUX4] bind summary: ready=%lu verified=%lu all=%u\r\n",
+         (unsigned long)ready_count,
+         (unsigned long)verified_count,
+         (unsigned)all_verified);
+  return (ready_count > 0u) && (verified_count == ready_count);
+}
+
 bool DAC_Wave_IsBootReady(void)
 {
   return (s_dac_wave_boot_sync_done != 0u) &&
          (s_dac_stream_started != 0u) &&
          dac_wave_partition_ready(0u);
+}
+
+static int32_t dac_aux4_scale1000(float value)
+{
+  if (value >= 0.0f) {
+    return (int32_t)(value * 1000.0f + 0.5f);
+  }
+  return (int32_t)(value * 1000.0f - 0.5f);
 }
 
 bool edgewind_ui_can_show_enter_button(void)
@@ -1097,6 +1199,7 @@ static bool dac_fault_apply_trigger(uint32_t fault_id_0_5, uint32_t duration_s)
     return false;
   }
 
+  DAC8568_Aux4_SetActiveFile(s_dac_wave_sd_paths[partition], true);
   s_fault_active_id_0_5 = (uint8_t)fault_id_0_5;
   s_fault_end_tick = now + delta;
   s_fault_remaining_s = dur_s;
@@ -1124,6 +1227,9 @@ static void dac_fault_apply_stop(void)
          (unsigned long)s_dac_wave_info[0].checksum,
          (long)req_ret);
 
+  if (req_ret == 0) {
+    DAC8568_Aux4_SetActiveFile(DAC_WAVE_SD_PATH_NORMAL, false);
+  }
   s_fault_active_id_0_5 = 0xFFu;
   s_fault_end_tick = 0;
   s_fault_remaining_s = 0u;

@@ -124,6 +124,10 @@ bool DAC_Wave_IsBootReady(void);
 #define DAC_WAVE_SD_SYNC_FLAG_PATH "0:/wave/SYNC_NOW.TXT"
 #endif
 
+#ifndef DAC_WAVE_AUX4_SCHEDULE_PATH
+#define DAC_WAVE_AUX4_SCHEDULE_PATH "0:/wave/aux4_schedule.a4b"
+#endif
+
 #ifndef DAC_WAVE_SYNC_FLAG_WAIT_MS
 #define DAC_WAVE_SYNC_FLAG_WAIT_MS 12000u
 #endif

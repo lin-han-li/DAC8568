@@ -5282,9 +5282,19 @@
               <FilePath>.\HARDWORK\DAC8568\dac8568_dma.c</FilePath>
             </File>
             <File>
+              <FileName>dac8568_aux4.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\HARDWORK\DAC8568\dac8568_aux4.c</FilePath>
+            </File>
+            <File>
               <FileName>dac8568_dma.h</FileName>
               <FileType>5</FileType>
               <FilePath>.\HARDWORK\DAC8568\dac8568_dma.h</FilePath>
+            </File>
+            <File>
+              <FileName>dac8568_aux4.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\HARDWORK\DAC8568\dac8568_aux4.h</FilePath>
             </File>
           </Files>
         </Group>
