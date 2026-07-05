@@ -9,6 +9,8 @@
 #include "../components/ew_ui_fault_model.h"
 #include "../components/ew_ui_styles.h"
 #include "../components/ew_ui_theme.h"
+#include "../components/ew_ui_styles_redesign.h"
+#include "../components/ew_ui_theme_redesign.h"
 #include "lv_port_indev.h"
 
 #include "../fonts/ew_fonts.h"
@@ -796,7 +798,7 @@ lv_obj_t * ew_main_screen_get(void)
     s_main_scr = lv_obj_create(NULL);
     lv_obj_remove_style_all(s_main_scr);
     lv_obj_add_style(s_main_scr, &ew_style_screen_bg, 0);
-    lv_obj_set_style_bg_color(s_main_scr, lv_color_hex(0xF2F4F8), 0);
+    lv_obj_set_style_bg_color(s_main_scr, EW_COLOR_BG_CREAM, 0);
     lv_obj_set_style_bg_opa(s_main_scr, LV_OPA_COVER, 0);
     lv_obj_clear_flag(s_main_scr, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_flex_flow(s_main_scr, LV_FLEX_FLOW_COLUMN);
@@ -852,16 +854,22 @@ lv_obj_t * ew_main_screen_get(void)
         lv_obj_remove_style_all(card);
         lv_obj_set_size(card, card_w, card_h);
 
-        /* Light compact card style (matches HTML prototype). */
-        lv_obj_set_style_radius(card, 6, 0);
-        lv_obj_set_style_bg_color(card, lv_color_hex(0xFFFFFF), 0);
+        /* Warm redesigned card style with rounded corners and soft shadow. */
+        lv_obj_set_style_radius(card, EW_LAYOUT_CARD_RADIUS, 0);
+        lv_obj_set_style_bg_color(card, EW_COLOR_SURFACE_WARM, 0);
         lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
         lv_obj_set_style_border_width(card, 1, 0);
-        lv_obj_set_style_border_color(card, lv_color_hex(0xF0F0F0), 0);
-        lv_obj_set_style_shadow_width(card, 4, 0);
-        lv_obj_set_style_shadow_ofs_y(card, 2, 0);
+        lv_obj_set_style_border_color(card, EW_COLOR_BORDER_HAIRLINE, 0);
+        lv_obj_set_style_shadow_width(card, 12, 0);
+        lv_obj_set_style_shadow_ofs_y(card, 3, 0);
         lv_obj_set_style_shadow_color(card, lv_color_hex(0x000000), 0);
         lv_obj_set_style_shadow_opa(card, LV_OPA_10, 0);
+
+        /* Color-coded top border strip (3px) for each fault type */
+        lv_obj_set_style_border_side(card, LV_BORDER_SIDE_TOP, 0);
+        lv_obj_set_style_border_width(card, 3, LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_obj_set_style_border_color(card, ew_ui_get_fault_color(i), LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_obj_set_style_border_side(card, LV_BORDER_SIDE_TOP, LV_PART_MAIN | LV_STATE_DEFAULT);
 
         lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_add_event_cb(card, card_event_cb, LV_EVENT_CLICKED, (void *)(uintptr_t)i);
@@ -871,28 +879,32 @@ lv_obj_t * ew_main_screen_get(void)
         }
         lv_group_add_obj(s_main_group, card);
 
-        const lv_color_t focus_blue = lv_color_hex(0x2196F3);
+        const lv_color_t focus_terra = EW_COLOR_ACCENT_TERRA;
 
-        /* Pressed feedback */
+        /* Pressed feedback with warm terracotta tint */
+        lv_obj_set_style_bg_color(card, EW_COLOR_ACCENT_TERRA_TINT, LV_PART_MAIN | LV_STATE_PRESSED);
         lv_obj_set_style_border_width(card, 2, LV_PART_MAIN | LV_STATE_PRESSED);
-        lv_obj_set_style_border_color(card, focus_blue, LV_PART_MAIN | LV_STATE_PRESSED);
-        lv_obj_set_style_shadow_opa(card, LV_OPA_30, LV_PART_MAIN | LV_STATE_PRESSED);
+        lv_obj_set_style_border_color(card, focus_terra, LV_PART_MAIN | LV_STATE_PRESSED);
+        lv_obj_set_style_shadow_ofs_y(card, 1, LV_PART_MAIN | LV_STATE_PRESSED);
+        lv_obj_set_style_shadow_opa(card, LV_OPA_20, LV_PART_MAIN | LV_STATE_PRESSED);
 
         /* Focused selection frame for keypad navigation visibility */
         lv_obj_set_style_border_width(card, 2, LV_PART_MAIN | LV_STATE_FOCUSED);
-        lv_obj_set_style_border_color(card, focus_blue, LV_PART_MAIN | LV_STATE_FOCUSED);
-        lv_obj_set_style_outline_width(card, 2, LV_PART_MAIN | LV_STATE_FOCUSED);
+        lv_obj_set_style_border_color(card, focus_terra, LV_PART_MAIN | LV_STATE_FOCUSED);
+        lv_obj_set_style_outline_width(card, 3, LV_PART_MAIN | LV_STATE_FOCUSED);
         lv_obj_set_style_outline_pad(card, 1, LV_PART_MAIN | LV_STATE_FOCUSED);
-        lv_obj_set_style_outline_color(card, focus_blue, LV_PART_MAIN | LV_STATE_FOCUSED);
-        lv_obj_set_style_outline_opa(card, LV_OPA_30, LV_PART_MAIN | LV_STATE_FOCUSED);
-        lv_obj_set_style_shadow_opa(card, LV_OPA_30, LV_PART_MAIN | LV_STATE_FOCUSED);
+        lv_obj_set_style_outline_color(card, EW_COLOR_ACCENT_TERRA_TINT, LV_PART_MAIN | LV_STATE_FOCUSED);
+        lv_obj_set_style_outline_opa(card, LV_OPA_40, LV_PART_MAIN | LV_STATE_FOCUSED);
+        lv_obj_set_style_shadow_ofs_y(card, 5, LV_PART_MAIN | LV_STATE_FOCUSED);
+        lv_obj_set_style_shadow_opa(card, LV_OPA_15, LV_PART_MAIN | LV_STATE_FOCUSED);
         lv_obj_set_style_border_width(card, 2, LV_PART_MAIN | LV_STATE_FOCUS_KEY);
-        lv_obj_set_style_border_color(card, focus_blue, LV_PART_MAIN | LV_STATE_FOCUS_KEY);
-        lv_obj_set_style_outline_width(card, 2, LV_PART_MAIN | LV_STATE_FOCUS_KEY);
+        lv_obj_set_style_border_color(card, focus_terra, LV_PART_MAIN | LV_STATE_FOCUS_KEY);
+        lv_obj_set_style_outline_width(card, 3, LV_PART_MAIN | LV_STATE_FOCUS_KEY);
         lv_obj_set_style_outline_pad(card, 1, LV_PART_MAIN | LV_STATE_FOCUS_KEY);
-        lv_obj_set_style_outline_color(card, focus_blue, LV_PART_MAIN | LV_STATE_FOCUS_KEY);
-        lv_obj_set_style_outline_opa(card, LV_OPA_30, LV_PART_MAIN | LV_STATE_FOCUS_KEY);
-        lv_obj_set_style_shadow_opa(card, LV_OPA_30, LV_PART_MAIN | LV_STATE_FOCUS_KEY);
+        lv_obj_set_style_outline_color(card, EW_COLOR_ACCENT_TERRA_TINT, LV_PART_MAIN | LV_STATE_FOCUS_KEY);
+        lv_obj_set_style_outline_opa(card, LV_OPA_40, LV_PART_MAIN | LV_STATE_FOCUS_KEY);
+        lv_obj_set_style_shadow_ofs_y(card, 5, LV_PART_MAIN | LV_STATE_FOCUS_KEY);
+        lv_obj_set_style_shadow_opa(card, LV_OPA_15, LV_PART_MAIN | LV_STATE_FOCUS_KEY);
 
         /* Keep pressed scale from center */
         lv_obj_set_style_transform_pivot_x(card, card_w / 2, LV_PART_MAIN | LV_STATE_PRESSED);
@@ -911,7 +923,7 @@ lv_obj_t * ew_main_screen_get(void)
         lv_obj_remove_style_all(icon_cont);
         lv_obj_set_size(icon_cont, 28, 28);
         lv_obj_set_style_radius(icon_cont, LV_RADIUS_CIRCLE, 0);
-        lv_color_t light_col = lv_color_mix(cfg->theme_color, lv_color_white(), 40);
+        lv_color_t light_col = ew_ui_get_fault_bg_color(i);
         lv_obj_set_style_bg_color(icon_cont, light_col, 0);
         lv_obj_set_style_bg_opa(icon_cont, LV_OPA_COVER, 0);
         lv_obj_set_style_margin_bottom(icon_cont, 4, 0);
@@ -923,7 +935,7 @@ lv_obj_t * ew_main_screen_get(void)
 
         lv_obj_t * icn = lv_label_create(icon_cont);
         lv_obj_set_style_text_font(icn, &lv_font_montserrat_14, 0);
-        lv_obj_set_style_text_color(icn, cfg->theme_color, 0);
+        lv_obj_set_style_text_color(icn, ew_ui_get_fault_color(i), 0);
         lv_label_set_text(icn, cfg->icon);
         lv_obj_add_flag(icn, LV_OBJ_FLAG_EVENT_BUBBLE);
         lv_obj_clear_flag(icn, LV_OBJ_FLAG_CLICKABLE);
@@ -931,7 +943,7 @@ lv_obj_t * ew_main_screen_get(void)
         lv_obj_t * cn = lv_label_create(card);
         lv_obj_add_style(cn, &ew_style_text_cn, 0);
         lv_obj_set_style_text_font(cn, EW_FONT_CN_12, 0);
-        lv_obj_set_style_text_color(cn, lv_color_hex(0x34495E), 0);
+        lv_obj_set_style_text_color(cn, EW_COLOR_INK_DARK, 0);
         lv_label_set_text(cn, cfg->name_cn);
         lv_obj_add_flag(cn, LV_OBJ_FLAG_EVENT_BUBBLE);
         lv_obj_clear_flag(cn, LV_OBJ_FLAG_CLICKABLE);

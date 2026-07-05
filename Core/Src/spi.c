@@ -88,7 +88,7 @@ void MX_SPI6_Init(void)
   hspi6.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi6.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi6.Init.NSS = SPI_NSS_HARD_OUTPUT;
-  hspi6.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
+  hspi6.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
   hspi6.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi6.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi6.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -108,8 +108,8 @@ void MX_SPI6_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN SPI6_Init 2 */
-  /* Keep SPI6 baud rate from CubeMX configuration (do not down-clock). */
-  hspi6.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
+  /* Reduce SPI6 speed for longer cable stability (prevent flickering). */
+  hspi6.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
   if (HAL_SPI_Init(&hspi6) != HAL_OK)
   {
     Error_Handler();
