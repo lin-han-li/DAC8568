@@ -5247,6 +5247,21 @@
               <FilePath>.\HARDWORK\EdgeWind_UI\components\ew_ui_anim.c</FilePath>
             </File>
             <File>
+              <FileName>ew_ui_theme_redesign.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\HARDWORK\EdgeWind_UI\components\ew_ui_theme_redesign.h</FilePath>
+            </File>
+            <File>
+              <FileName>ew_ui_styles_redesign.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\HARDWORK\EdgeWind_UI\components\ew_ui_styles_redesign.h</FilePath>
+            </File>
+            <File>
+              <FileName>ew_ui_styles_redesign.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\HARDWORK\EdgeWind_UI\components\ew_ui_styles_redesign.c</FilePath>
+            </File>
+            <File>
               <FileName>ew_ui_log.h</FileName>
               <FileType>5</FileType>
               <FilePath>.\HARDWORK\EdgeWind_UI\components\ew_ui_log.h</FilePath>

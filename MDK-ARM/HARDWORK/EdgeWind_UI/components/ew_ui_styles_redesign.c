@@ -69,7 +69,7 @@ void ew_ui_styles_redesign_init(void)
     lv_style_set_shadow_width(&ew_style_header_warm, 8);
     lv_style_set_shadow_ofs_y(&ew_style_header_warm, 2);
     lv_style_set_shadow_color(&ew_style_header_warm, lv_color_hex(0x000000));
-    lv_style_set_shadow_opa(&ew_style_header_warm, LV_OPA_5);
+    lv_style_set_shadow_opa(&ew_style_header_warm, LV_OPA_10);
 
     /* =========================
      * 页脚样式 - 浅奶油底色

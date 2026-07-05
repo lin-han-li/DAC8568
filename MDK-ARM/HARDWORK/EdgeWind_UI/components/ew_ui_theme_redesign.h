@@ -98,7 +98,7 @@ extern "C" {
 
 #define EW_SHADOW_HOVER_WIDTH   16      /* 悬停阴影宽度 */
 #define EW_SHADOW_HOVER_OFS_Y   5       /* 悬停阴影Y偏移 */
-#define EW_SHADOW_HOVER_OPA     LV_OPA_15  /* 悬停阴影不透明度 */
+#define EW_SHADOW_HOVER_OPA     LV_OPA_20  /* 悬停阴影不透明度 */
 
 /* 按压效果 */
 #define EW_PRESS_SCALE          250     /* 按压缩放 (~0.98x) */
